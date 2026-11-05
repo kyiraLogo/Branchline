@@ -1,7 +1,10 @@
 # Branchline with Supabase
 
-A project tree where every role is a node with a progress ring, a goal checklist and private sub-goals.
-All data lives in your Supabase database. The app is a static site (no build step).
+<b>Coment: For localy running and testing use https://kyiralogo.github.io/Branchline/Branchline.html</b>
+
+Create with a purpose to see the bigger picture around your projects and to manage your teammates goals. 
+Works like a project tree where every role is a node with a progress ring, a goal checklist and private sub-goals.
+The project created for local use and for use with Suobase database. If you run Branchline.html, you are running app localy and you don't want to run localy but with base you need don't Branchline.html.
 
 ## Files
 
