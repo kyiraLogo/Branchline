@@ -269,7 +269,8 @@ const api={
   saveSubgoals:(token,list)=>rpc("save_my_subgoals",{p_token:token,p_subgoals:list}),
   addNode:(token,v)=>rpc("add_node",{p_token:token,p_name:v.name,p_role:v.role,p_pin:v.pin,p_goals:v.goals}),
   updateNode:(token,id,v)=>rpc("update_node",{p_token:token,p_node_id:id,p_name:v.name,p_role:v.role,p_goals:v.goals,p_pin:v.pin||null}),
-  removeNode:(token,id)=>rpc("remove_node",{p_token:token,p_node_id:id})
+  removeNode:(token,id)=>rpc("remove_node",{p_token:token,p_node_id:id}),
+  deleteProject:token=>rpc("delete_project",{p_token:token})
 };
 
 /* ---------- small pieces ---------- */
@@ -612,6 +613,22 @@ function SetupNeeded(){
   </div></div></div>`;
 }
 
+/* ---------- delete project ---------- */
+function DeleteProjectForm({code,name,count,onConfirm,onCancel}){
+  const [typed,setTyped]=useState("");
+  const [busy,setBusy]=useState(false);
+  const ok=typed.trim().toUpperCase()===code;
+  return html`<form onSubmit=${async e=>{e.preventDefault();if(!ok)return;setBusy(true);await onConfirm();setBusy(false);}} style=${{display:"grid",gap:"16px"}}>
+    <div className="warnbox">
+      <div><strong>${name}</strong> and everything in it will be deleted for everyone: ${count} ${count===1?"node":"nodes"}, all goals and sub-goals.</div>
+      <div className="muted">This cannot be undone.</div>
+    </div>
+    <label className="fl" htmlFor="del-code">Type the project code <span className="mono">${code}</span> to confirm
+      <input id="del-code" type="text" value=${typed} onChange=${e=>setTyped(e.target.value)} autoComplete="off" autoFocus=${true} style=${{fontFamily:"var(--font-mono)",letterSpacing:".1em"}}/></label>
+    <div className="row"><button type="submit" className="btn danger" disabled=${!ok||busy}>Delete project</button><button type="button" className="btn" onClick=${onCancel}>Keep project</button></div>
+  </form>`;
+}
+
 /* ---------- workspace ---------- */
 function Workspace({session,first,onExit}){
   const code=session.code,token=session.token,meId=session.nodeId;
@@ -702,6 +719,13 @@ function Workspace({session,first,onExit}){
     try{navigator.clipboard.writeText(code).then(ok,fail);}catch(e){fail();}
   };
   const signOut=async()=>{try{await api.logout(token);}catch(e){}onExit();};
+  const doDeleteProject=async()=>{
+    pending.current++;
+    try{await api.deleteProject(token);}
+    catch(e){pending.current--;setNotice({kind:"error",text:friendly(e)});return;}
+    pending.current--;
+    onExit();
+  };
 
   let sheetEl=null;
   if(sheet){
@@ -722,6 +746,8 @@ function Workspace({session,first,onExit}){
     }else if(sheet.type==="edit"&&nodes[sheet.id]&&canManage(nodes,meId,sheet.id)){
       const n=nodes[sheet.id];
       sheetEl=html`<${Sheet} title=${"Edit "+n.name} onClose=${close}><${NodeForm} key=${n.id} mode="edit" node=${n} level=${levelOf(nodes,n.id)} onSubmit=${v=>saveEdit(n.id,v)} onCancel=${close}/><//>`;
+    }else if(sheet.type==="deleteProject"&&me.id===rootId){
+      sheetEl=html`<${Sheet} title="Delete project?" onClose=${close}><${DeleteProjectForm} code=${code} name=${project.meta.name} count=${Object.keys(nodes).length} onConfirm=${doDeleteProject} onCancel=${close}/><//>`;
     }else if(sheet.type==="remove"&&nodes[sheet.id]&&canRemove(nodes,meId,sheet.id)){
       const n=nodes[sheet.id],below=descendantsOf(nodes,n.id).map(i=>nodes[i].name);
       sheetEl=html`<${Sheet} title=${"Remove "+n.name+"?"} onClose=${close}>
@@ -741,6 +767,7 @@ function Workspace({session,first,onExit}){
         <span className=${"chip sync"+(loadErr?" local":"")}>${loadErr?"Offline, retrying":"Saved in Supabase"}</span>
         <button type="button" className="btn" onClick=${()=>setSheet({type:"team"})}><${Ico} d=${P.users}/> Manage team</button>
         <button type="button" className="btn" onClick=${signOut}><${Ico} d=${P.out}/> Sign out</button>
+        ${me.id===rootId&&html`<button type="button" className="btn danger" onClick=${()=>setSheet({type:"deleteProject"})}><${Ico} d=${P.trash}/> Delete project</button>`}
       </div>
     </header>
     <div className="who">Signed in as <strong>${me.name}</strong>, ${me.role}, level ${levelOf(nodes,meId)}. You can edit your own node and the people directly below you.</div>
