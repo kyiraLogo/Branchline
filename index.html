@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Branchline</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: drafting-table workspace. A dotted canvas holds the role tree, a detail panel sits beside it; the sign-in page pairs a pitch with two choices. */
+:root{
+  --font-display:"Familjen Grotesk","Segoe UI",system-ui,sans-serif;
+  --font-body:"Public Sans","Segoe UI",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --bg:#E8EDF3;
+  --panel:#F7F9FB;
+  --panel2:#EDF1F6;
+  --ink:#12202E;
+  --muted:#556575;
+  --line:#C9D3DE;
+  --edge:#9FB0C2;
+  --accent:#2650C0;
+  --on-accent:#FFFFFF;
+  --accent-soft:#DAE4FA;
+  --warn:#B26700;
+  --good:#16764F;
+  --bad:#B3261E;
+  --track:#D3DCE6;
+  --dot:#BCC8D5;
+  --node:#FFFFFF;
+  --shadow:0 1px 0 rgba(18,32,46,.04),0 10px 28px -14px rgba(18,32,46,.28);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D141B;--panel:#141E28;--panel2:#1A2733;--ink:#E4EBF2;--muted:#93A4B4;--line:#293845;--edge:#3A4D5E;
+    --accent:#7CA3FF;--on-accent:#0A1322;--accent-soft:#1E315F;--warn:#E7A640;--good:#52C794;--bad:#FF8F86;
+    --track:#2B3A48;--dot:#1F2C38;--node:#101922;--shadow:0 10px 28px -14px rgba(0,0,0,.6);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D141B;--panel:#141E28;--panel2:#1A2733;--ink:#E4EBF2;--muted:#93A4B4;--line:#293845;--edge:#3A4D5E;
+  --accent:#7CA3FF;--on-accent:#0A1322;--accent-soft:#1E315F;--warn:#E7A640;--good:#52C794;--bad:#FF8F86;
+  --track:#2B3A48;--dot:#1F2C38;--node:#101922;--shadow:0 10px 28px -14px rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--font-body);-webkit-text-size-adjust:100%}
+h1,h2,h3,p{margin:0}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance}
+button{font:inherit;color:inherit}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+
+.shell{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 56px}
+.wrap{max-width:1480px;margin:0 auto;display:grid;gap:16px}
+
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-weight:600;font-size:14px;cursor:pointer;text-decoration:none}
+.btn:hover{border-color:var(--edge)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--accent);padding:0 6px;min-height:34px}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+.icon{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:8px;border:1px solid transparent;background:transparent;cursor:pointer;color:var(--muted)}
+.icon:hover{color:var(--ink);background:var(--panel2)}
+.btn:focus-visible,.icon:focus-visible,.choice:focus-visible,.pick:focus-visible,.share:focus-visible,.codechip:focus-visible,.linkbtn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+label.fl{display:grid;gap:6px;font-weight:600;font-size:13.5px}
+label.fl .help{font-weight:400;color:var(--muted);font-size:13px}
+input[type=text],input[type=password],input[type=search],input:not([type]){font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;min-height:42px;padding:0 12px;width:100%}
+input::placeholder{color:var(--muted);opacity:.8}
+input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:var(--accent);flex:none}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0;height:28px}
+.chip{display:inline-flex;align-items:center;gap:6px;font:500 11.5px var(--font-mono);letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.chip.strong{background:var(--accent-soft);color:var(--ink);border-color:transparent}
+.chip.sync::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--good)}
+.chip.sync.local::before{background:var(--warn)}
+.err{color:var(--bad);font-size:13.5px;font-weight:500}
+.linkbtn{background:none;border:0;padding:0;color:var(--accent);font-weight:600;cursor:pointer;text-align:left}
+.linkbtn:hover{text-decoration:underline}
+
+/* welcome */
+.welcome{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:48px;align-items:center;min-height:calc(100vh - 90px)}
+.brand{display:flex;align-items:center;gap:10px;font:700 21px var(--font-display);letter-spacing:-.01em}
+.pitch{display:grid;gap:22px}
+.pitch h1{font-size:clamp(32px,5vw,54px);line-height:1.04;font-weight:700;letter-spacing:-.02em;max-width:15ch}
+.pitch p{max-width:46ch;color:var(--muted);font-size:16px}
+.art{border:1px solid var(--line);border-radius:12px;background:var(--panel);background-image:radial-gradient(var(--dot) 1px,transparent 1px);background-size:22px 22px;overflow:hidden}
+.art svg{display:block;width:100%;height:auto}
+.panelcol{display:grid;gap:14px;align-content:center}
+.panelcol h2{font-size:15px;font-family:var(--font-mono);font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.choice{display:grid;gap:6px;text-align:left;padding:20px;border:1px solid var(--line);background:var(--panel);border-radius:12px;cursor:pointer;color:var(--ink);width:100%;box-shadow:var(--shadow)}
+.choice:hover{border-color:var(--accent)}
+.choice[disabled]{opacity:.6;cursor:wait}
+.choice .t{font:600 21px var(--font-display);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.choice .d{color:var(--muted);font-size:14.5px}
+.formcard{display:grid;gap:16px;padding:22px;border:1px solid var(--line);background:var(--panel);border-radius:12px;box-shadow:var(--shadow)}
+.formcard h3{font-size:22px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pickwrap{display:grid;gap:6px;max-height:320px;overflow:auto;padding:2px}
+.pick{display:flex;align-items:center;gap:12px;text-align:left;width:100%;padding:8px 12px;border:1px solid var(--line);background:var(--panel);border-radius:10px;cursor:pointer;min-height:52px}
+.pick:hover{border-color:var(--edge)}
+.pick[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.pick .nm2{font-weight:600;display:block;line-height:1.25}
+.pick .rl2{color:var(--muted);font-size:13px;display:block;line-height:1.25}
+.pick .lv{margin-left:auto}
+
+/* workspace */
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.brandrow{display:flex;align-items:center;gap:12px;min-width:0}
+.proj-label{font-size:11px;letter-spacing:.1em;color:var(--muted)}
+.proj-name{font-size:clamp(20px,3vw,28px);line-height:1.1;font-weight:700;letter-spacing:-.01em;overflow-wrap:anywhere}
+.top-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.codechip{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 12px;border:1px dashed var(--edge);border-radius:8px;background:var(--panel);cursor:pointer;color:var(--ink)}
+.codechip .lbl{font-size:11px;color:var(--muted);letter-spacing:.08em}
+.codechip .val{font-weight:600;letter-spacing:.1em;user-select:all}
+.who{color:var(--muted);font-size:14px}
+.who strong{color:var(--ink)}
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:16px;align-items:start}
+.canvas{border:1px solid var(--line);border-radius:12px;background:var(--panel);background-image:radial-gradient(var(--dot) 1px,transparent 1px);background-size:22px 22px;min-width:0;overflow:hidden}
+.canvas-h{display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.canvas-h h2{font-size:16px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font:500 12px var(--font-mono);color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.scroll{overflow:auto;max-height:72vh}
+.tree{display:block;margin:0 auto}
+.tree text{font-family:var(--font-body)}
+.edge{fill:none;stroke:var(--edge);stroke-width:2}
+.lane{stroke:var(--line);stroke-dasharray:2 7}
+.lanelbl{fill:var(--muted);font:500 11px var(--font-mono);letter-spacing:.08em}
+.node{cursor:pointer;outline:none}
+.node .disc{fill:var(--node)}
+.node .halo{stroke:var(--accent);stroke-width:2.5;opacity:0;transition:opacity .15s}
+.node:hover .halo{opacity:.45}
+.node.sel .halo,.node:focus-visible .halo{opacity:1}
+.nm{fill:var(--ink);font-weight:600;font-size:13.5px}
+.rl{fill:var(--muted);font-size:12px}
+.pct{fill:var(--ink);font:600 15px var(--font-mono)}
+.pctsign{font-size:10px;fill:var(--muted)}
+.youtag rect{fill:var(--accent)}
+.youtag text{fill:var(--on-accent);font:600 9px var(--font-mono);letter-spacing:.06em}
+
+.detail{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:18px;display:grid;gap:20px;min-width:0;box-shadow:var(--shadow)}
+.dhead{display:flex;gap:14px;align-items:center;min-width:0}
+.dhead h2{font-size:22px;line-height:1.15;overflow-wrap:anywhere}
+.dhead .role{color:var(--muted);overflow-wrap:anywhere}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.facts{display:grid;gap:8px;font-size:14px;color:var(--muted)}
+.facts .links{display:flex;flex-wrap:wrap;gap:4px 12px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.sec{display:grid;gap:4px}
+.sec-h{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--ink)}
+.sec-h h3{font-size:16px}
+.sec-h .mono{font-size:13px;color:var(--muted)}
+.hint{color:var(--muted);font-size:13.5px;padding-top:8px}
+ul.list{list-style:none;margin:0;padding:0;display:grid}
+.goal{display:grid;gap:6px;padding:12px 0;border-bottom:1px solid var(--line)}
+.goal-top{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.check{display:flex;align-items:center;gap:10px;min-width:0;cursor:pointer}
+.goal-text{overflow-wrap:anywhere}
+.goal-text.done{color:var(--muted);text-decoration:line-through}
+.goal .mono{font-size:13px;color:var(--muted);flex:none}
+.bar{height:8px;border-radius:99px;background:var(--track);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px}
+.sg{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.sg .goal-text{flex:1;min-width:0}
+.share{display:inline-flex;align-items:center;gap:6px;font:500 12px var(--font-mono);padding:4px 9px;border-radius:99px;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer;flex:none}
+.share[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink);border-color:var(--accent)}
+.addrow{display:flex;gap:8px;padding-top:12px}
+
+/* sheet */
+.back{position:fixed;inset:0;z-index:50;display:flex;overflow:auto;background:rgba(8,14,20,.55);padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.sheet{margin:auto;width:min(640px,100%);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;display:grid;gap:16px;box-shadow:var(--shadow)}
+.sheet-h{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.sheet-h h2{font-size:21px}
+.team-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.team-row .who2{flex:1;min-width:160px}
+.team-row .who2 b{display:block;line-height:1.25}
+.team-row .who2 span{color:var(--muted);font-size:13px}
+.gedit{display:grid;gap:8px}
+.gedit-row{display:flex;gap:8px;align-items:center}
+.formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.warnbox{border:1px solid var(--bad);border-radius:10px;padding:12px 14px;display:grid;gap:6px}
+
+.toast{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;justify-content:center;pointer-events:none;padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.toast div{pointer-events:auto;max-width:560px;background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:10px;font-weight:500;font-size:14px;box-shadow:var(--shadow);border:2px solid transparent}
+.toast div.error{border-color:var(--bad)}
+
+@media (max-width:960px){
+  .stage{grid-template-columns:minmax(0,1fr)}
+  .welcome{grid-template-columns:minmax(0,1fr);gap:28px;min-height:0}
+  .scroll{max-height:60vh}
+}
+@media (max-width:560px){
+  .formgrid{grid-template-columns:minmax(0,1fr)}
+  .sheet{padding:16px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+body{margin:0}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+(function(){
+"use strict";
+var useState=React.useState,useEffect=React.useEffect,useMemo=React.useMemo,useRef=React.useRef;
+var html=htm.bind(React.createElement);
+
+/*LOGIC-START*/
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+function progressOf(node){const g=(node&&node.goals)||[];if(!g.length)return 0;return Math.round(g.reduce((s,x)=>s+clamp(+x.pct||0,0,100),0)/g.length);}
+function childrenOf(nodes,id){return Object.values(nodes).filter(n=>n.parentId===id).sort((a,b)=>((a.order||0)-(b.order||0))||String(a.name).localeCompare(String(b.name)));}
+function levelOf(nodes,id){let l=1,cur=nodes[id],guard=0;while(cur&&cur.parentId&&nodes[cur.parentId]&&guard++<100){l++;cur=nodes[cur.parentId];}return l;}
+function descendantsOf(nodes,id){const out=[],seen=new Set([id]),st=[id];while(st.length){const c=st.pop();for(const k of childrenOf(nodes,c)){if(seen.has(k.id))continue;seen.add(k.id);out.push(k.id);st.push(k.id);}}return out;}
+const canManage=(nodes,v,t)=>{const n=nodes[t];return !!n&&!!nodes[v]&&(n.id===v||n.parentId===v);};
+const canRemove=(nodes,v,t)=>{const n=nodes[t];return !!n&&!!nodes[v]&&n.parentId===v;};
+function subgoalView(nodes,v,t){const n=nodes[t],me=nodes[v];if(!n||!me)return{mode:"hidden",items:[]};const all=n.subgoals||[];if(n.id===me.id)return{mode:"own",items:all};if(me.parentId===n.id)return{mode:"shared",items:all.filter(s=>s.shared)};return{mode:"hidden",items:[]};}
+function layoutTree(nodes,rootId){const pos={};let leaf=0,maxDepth=0;const seen=new Set();
+  function walk(id,d){seen.add(id);maxDepth=Math.max(maxDepth,d);const kids=childrenOf(nodes,id).filter(k=>!seen.has(k.id));
+    if(!kids.length){pos[id]={slot:leaf++,depth:d};return pos[id].slot;}
+    const slots=kids.map(k=>walk(k.id,d+1));const slot=(slots[0]+slots[slots.length-1])/2;pos[id]={slot:slot,depth:d};return slot;}
+  if(nodes[rootId])walk(rootId,0);
+  return{pos:pos,leaves:Math.max(leaf,1),maxDepth:maxDepth};}
+/*LOGIC-END*/
+
+const LOW="abcdefghjkmnpqrstuvwxyz23456789";
+const rnd=(n,al)=>Array.from({length:n},()=>al[Math.floor(Math.random()*al.length)]).join("");
+const gid=()=>"g"+rnd(7,LOW);
+const clip=(s,n)=>{s=String(s||"");return s.length>n?s.slice(0,n-1)+"…":s;};
+const ringColor=p=>p>=100?"var(--good)":p>=40?"var(--accent)":"var(--warn)";
+const SKEY="branchline-session-v2";
+const ROLE_HINTS=["Project Manager","Team Lead","Specialist","Coordinator","Engineer","Analyst","Designer"];
+
+/* ---------- Supabase: every call goes through a database function (see supabase/schema.sql) ---------- */
+const CFG=window.BRANCHLINE_CONFIG||{};
+const sb=(window.supabase&&CFG.SUPABASE_URL&&CFG.SUPABASE_ANON_KEY)
+  ?window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}):null;
+
+function friendly(e){
+  const m=String((e&&e.message)||"");
+  if(/failed to fetch|networkerror|load failed|network request failed/i.test(m))return "Could not reach Supabase. Check your internet connection and the URL in config.js.";
+  if(/could not find the function|schema cache/i.test(m))return "The database functions are missing. Run supabase/schema.sql in the Supabase SQL Editor.";
+  if(/invalid api key|jwt|apikey/i.test(m))return "Supabase rejected the key in config.js. Copy the anon (public) key again.";
+  return m||"Something went wrong. Try again.";
+}
+async function rpc(fn,args){
+  const r=await sb.rpc(fn,args||{});
+  if(r.error){const e=new Error(r.error.message||"Request failed");if(r.error.message==="invalid_session")e.code="invalid_session";throw e;}
+  return r.data;
+}
+const toNodes=rows=>{const o={};(rows||[]).forEach(r=>{o[r.id]={id:r.id,parentId:r.parent_id,order:r.sort_order,name:r.name,role:r.role,goals:r.goals||[],subgoals:r.subgoals||[]};});return o;};
+const patchNode=(p,id,fn)=>p.nodes[id]?Object.assign({},p,{nodes:Object.assign({},p.nodes,{[id]:fn(p.nodes[id])})}):p;
+const api={
+  createProject:a=>rpc("create_project",{p_name:a.name,p_user_name:a.userName,p_role:a.role,p_pin:a.pin,p_goals:a.goals}),
+  lookup:code=>rpc("lookup_project",{p_code:code}),
+  login:(code,nodeId,pin)=>rpc("login",{p_code:code,p_node_id:nodeId,p_pin:pin}),
+  logout:token=>rpc("logout",{p_token:token}),
+  project:async token=>{const d=await rpc("get_project",{p_token:token});return{meta:{name:d.name,rootId:d.root_id,code:d.code},meId:d.me,nodes:toNodes(d.nodes)};},
+  setGoal:(token,nodeId,goalId,pct)=>rpc("set_goal",{p_token:token,p_node_id:nodeId,p_goal_id:goalId,p_pct:pct}),
+  saveSubgoals:(token,list)=>rpc("save_my_subgoals",{p_token:token,p_subgoals:list}),
+  addNode:(token,v)=>rpc("add_node",{p_token:token,p_name:v.name,p_role:v.role,p_pin:v.pin,p_goals:v.goals}),
+  updateNode:(token,id,v)=>rpc("update_node",{p_token:token,p_node_id:id,p_name:v.name,p_role:v.role,p_goals:v.goals,p_pin:v.pin||null}),
+  removeNode:(token,id)=>rpc("remove_node",{p_token:token,p_node_id:id})
+};
+
+/* ---------- small pieces ---------- */
+const P={plus:"M12 5v14M5 12h14",x:"M6 6l12 12M18 6L6 18",edit:"M4 20h4L19 9l-4-4L4 16v4z",copy:"M9 9h10v10H9zM5 15V5h10",
+  eye:"M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 100 6 3 3 0 000-6z",lock:"M6 11h12v9H6zM8 11V8a4 4 0 018 0v3",
+  out:"M9 4H5v16h4M16 8l4 4-4 4M20 12H9",users:"M9 11a3 3 0 100-6 3 3 0 000 6zM3 20a6 6 0 0112 0M17 11a3 3 0 100-6M21 20a6 6 0 00-4-5.6",
+  arrow:"M5 12h14M13 6l6 6-6 6",trash:"M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"};
+const Ico=({d,size})=>html`<svg width=${size||16} height=${size||16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d=${d}/></svg>`;
+
+function Ring({pct,size,stroke,label}){
+  const s=size||44,w=stroke||5,r=(s-w)/2,c=2*Math.PI*r,m=s/2;
+  return html`<svg width=${s} height=${s} viewBox=${"0 0 "+s+" "+s} role="img" aria-label=${pct+"% of goals done"} style=${{flex:"none"}}>
+    <circle cx=${m} cy=${m} r=${r} fill="none" stroke="var(--track)" strokeWidth=${w}/>
+    ${pct>0&&html`<circle cx=${m} cy=${m} r=${r} fill="none" stroke=${ringColor(pct)} strokeWidth=${w} strokeLinecap="round" strokeDasharray=${(c*pct/100)+" "+c} transform=${"rotate(-90 "+m+" "+m+")"}/>`}
+    ${label&&html`<text x=${m} y=${m} textAnchor="middle" dy="0.35em" style=${{font:"600 "+Math.round(s*0.27)+"px var(--font-mono)",fill:"var(--ink)"}}>${pct}</text>`}
+  </svg>`;
+}
+function Mark(){return html`<svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="11" fill="none" stroke="var(--track)" strokeWidth="5"/><circle cx="15" cy="15" r="11" fill="none" stroke="var(--accent)" strokeWidth="5" strokeLinecap="round" strokeDasharray="48 70" transform="rotate(-90 15 15)"/></svg>`;}
+
+function MiniTree(){
+  const pts=[{x:260,y:52,p:100,n:"PM"},{x:130,y:150,p:72},{x:260,y:150,p:45},{x:390,y:150,p:100},{x:70,y:250,p:90},{x:190,y:250,p:30},{x:390,y:250,p:12}];
+  const e=[[0,1],[0,2],[0,3],[1,4],[1,5],[3,6]];
+  const R=24,w=6,c=2*Math.PI*R;
+  return html`<svg viewBox="0 0 520 310" aria-hidden="true">
+    ${e.map((k,i)=>html`<path key=${"e"+i} className="edge" d=${"M"+pts[k[0]].x+" "+(pts[k[0]].y+R+3)+"C"+pts[k[0]].x+" "+((pts[k[0]].y+pts[k[1]].y)/2)+" "+pts[k[1]].x+" "+((pts[k[0]].y+pts[k[1]].y)/2)+" "+pts[k[1]].x+" "+(pts[k[1]].y-R-3)}/>`)}
+    ${pts.map((p,i)=>html`<g key=${"n"+i} transform=${"translate("+p.x+" "+p.y+")"}>
+      <circle r=${R} style=${{fill:"var(--node)"}}/>
+      <circle r=${R} fill="none" stroke="var(--track)" strokeWidth=${w}/>
+      <circle r=${R} fill="none" stroke=${ringColor(p.p)} strokeWidth=${w} strokeLinecap="round" strokeDasharray=${(c*p.p/100)+" "+c} transform="rotate(-90)"/>
+      <text textAnchor="middle" dy="0.35em" className="pct" style=${{fontSize:"13px"}}>${p.p}</text>
+    </g>`)}
+  </svg>`;
+}
+
+/* ---------- tree ---------- */
+function TreeView({nodes,rootId,selId,meId,onSelect}){
+  const L=useMemo(()=>layoutTree(nodes,rootId),[nodes,rootId]);
+  const ref=useRef(null);
+  const colW=172,rowH=176,gut=78,top=62,R=32,sw=7;
+  const W=gut+L.leaves*colW+16,H=top+L.maxDepth*rowH+118;
+  const X=id=>gut+(L.pos[id].slot+0.5)*colW,Y=id=>top+L.pos[id].depth*rowH;
+  const ids=Object.keys(L.pos);
+  useEffect(()=>{const el=ref.current;if(el)el.scrollLeft=Math.max(0,(el.scrollWidth-el.clientWidth)/2);},[rootId]);
+  const c=2*Math.PI*R;
+  return html`<div className="scroll" ref=${ref}>
+    <svg className="tree" width=${W} height=${H} viewBox=${"0 0 "+W+" "+H} role="group" aria-label="Project tree">
+      ${Array.from({length:L.maxDepth+1},(_,d)=>html`<g key=${"lane"+d}>
+        <line className="lane" x1="0" x2=${W} y1=${top+d*rowH} y2=${top+d*rowH}/>
+        <text className="lanelbl" x="14" y=${top+d*rowH-10}>LEVEL ${d+1}</text>
+      </g>`)}
+      ${ids.filter(id=>nodes[id].parentId&&L.pos[nodes[id].parentId]).map(id=>{
+        const p=nodes[id].parentId,x1=X(p),y1=Y(p)+R+sw/2+46,x2=X(id),y2=Y(id)-R-sw/2,my=(y1+y2)/2;
+        return html`<path key=${"e"+id} className="edge" d=${"M"+x1+" "+y1+"C"+x1+" "+my+" "+x2+" "+my+" "+x2+" "+y2}/>`;})}
+      ${ids.map(id=>{
+        const n=nodes[id],p=progressOf(n),sel=id===selId;
+        return html`<g key=${id} className=${"node"+(sel?" sel":"")} transform=${"translate("+X(id)+" "+Y(id)+")"} tabIndex="0" role="button" aria-pressed=${sel}
+          aria-label=${n.name+", "+n.role+", level "+(L.pos[id].depth+1)+", "+p+"% of goals done"}
+          onClick=${()=>onSelect(id)} onKeyDown=${e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onSelect(id);}}}>
+          <circle className="halo" r=${R+sw/2+5} fill="none"/>
+          <circle className="disc" r=${R}/>
+          <circle r=${R} fill="none" stroke="var(--track)" strokeWidth=${sw}/>
+          ${p>0&&html`<circle r=${R} fill="none" stroke=${ringColor(p)} strokeWidth=${sw} strokeLinecap="round" strokeDasharray=${(c*p/100)+" "+c} transform="rotate(-90)"/>`}
+          <text className="pct" textAnchor="middle" dy="0.35em">${p}<tspan className="pctsign">%</tspan></text>
+          <text className="nm" textAnchor="middle" y=${R+sw/2+20}>${clip(n.name,20)}</text>
+          <text className="rl" textAnchor="middle" y=${R+sw/2+37}>${clip(n.role,24)}</text>
+          ${id===meId&&html`<g className="youtag" transform=${"translate("+(R-8)+" "+(-R-4)+")"}><rect x="0" y="-8" width="32" height="16" rx="8"/><text x="16" y="0" textAnchor="middle" dy="0.35em">YOU</text></g>`}
+        </g>`;})}
+    </svg>
+  </div>`;
+}
+
+/* ---------- detail panel ---------- */
+function GoalRow({g,editable,onCommit}){
+  const [v,setV]=useState(g.pct);
+  useEffect(()=>{setV(g.pct);},[g.pct]);
+  const commit=()=>{if(v!==g.pct)onCommit(v);};
+  if(!editable)return html`<li className="goal">
+    <div className="goal-top"><span className="goal-text">${g.text}</span><span className="mono">${g.pct}%</span></div>
+    <div className="bar"><i style=${{width:g.pct+"%",background:ringColor(g.pct)}}></i></div>
+  </li>`;
+  return html`<li className="goal">
+    <div className="goal-top">
+      <label className="check" htmlFor=${"cb-"+g.id}><input id=${"cb-"+g.id} type="checkbox" checked=${g.pct>=100} onChange=${()=>onCommit(g.pct>=100?0:100)}/><span className=${"goal-text"+(g.pct>=100?" done":"")}>${g.text}</span></label>
+      <span className="mono">${v}%</span>
+    </div>
+    <input id=${"rg-"+g.id} type="range" min="0" max="100" step="5" value=${v} aria-label=${"Progress for "+g.text}
+      onChange=${e=>setV(+e.target.value)} onPointerUp=${commit} onTouchEnd=${commit} onKeyUp=${commit} onBlur=${commit}/>
+  </li>`;
+}
+
+function SubGoals({view,owner,onAdd,onToggle,onShare,onRemove}){
+  const [text,setText]=useState("");
+  if(view.mode==="hidden")return html`<div className="sec"><div className="sec-h"><h3>Sub-goals</h3><span className="mono"><${Ico} d=${P.lock} size=${13}/></span></div>
+    <p className="hint">Sub-goals are visible only to ${owner} and the people directly below them, and only the ones ${owner} chooses to share.</p></div>`;
+  const own=view.mode==="own";
+  return html`<div className="sec">
+    <div className="sec-h"><h3>Sub-goals</h3><span className="mono">${own?view.items.filter(s=>s.done).length+"/"+view.items.length+" done":"shared by "+owner}</span></div>
+    ${own&&html`<p className="hint">Private by default. Share a sub-goal to let the people directly below you see it.</p>`}
+    ${!own&&view.items.length===0&&html`<p className="hint">${owner} has not shared any sub-goals with you.</p>`}
+    <ul className="list">${view.items.map(s=>html`<li key=${s.id} className="sg">
+      ${own?html`<input id=${"sd-"+s.id} type="checkbox" checked=${!!s.done} aria-label=${"Done: "+s.text} onChange=${()=>onToggle(s.id)}/>`:html`<span className="mono" aria-hidden="true">${s.done?"✓":"○"}</span>`}
+      <span className=${"goal-text"+(s.done?" done":"")}>${s.text}</span>
+      ${own&&html`<button type="button" className="share" aria-pressed=${!!s.shared} onClick=${()=>onShare(s.id)} title="Let the people directly below you see this sub-goal"><${Ico} d=${s.shared?P.eye:P.lock} size=${13}/>${s.shared?"Shared":"Private"}</button>
+      <button type="button" className="icon" aria-label=${"Remove sub-goal "+s.text} onClick=${()=>onRemove(s.id)}><${Ico} d=${P.x} size=${15}/></button>`}
+    </li>`)}</ul>
+    ${own&&html`<form className="addrow" onSubmit=${e=>{e.preventDefault();const t=text.trim();if(t){onAdd(t);setText("");}}}>
+      <input id="sg-new" type="text" value=${text} onChange=${e=>setText(e.target.value)} placeholder="Add a sub-goal" aria-label="New sub-goal" maxLength="140"/>
+      <button type="submit" className="btn">Add</button>
+    </form>`}
+  </div>`;
+}
+
+function Detail({nodes,meId,selId,onSelect,onEdit,onRemove,onAdd,act}){
+  const n=nodes[selId];
+  if(!n)return html`<div className="detail"><p className="muted">Select a node in the tree.</p></div>`;
+  const me=nodes[meId],level=levelOf(nodes,n.id),parent=n.parentId?nodes[n.parentId]:null,kids=childrenOf(nodes,n.id);
+  const mine=n.id===meId,mgr=canManage(nodes,meId,n.id),rem=canRemove(nodes,meId,n.id),pct=progressOf(n),sg=subgoalView(nodes,meId,n.id);
+  const relation=mine?"Your node":n.parentId===meId?"Reports to you":me.parentId===n.id?"Your manager":"View only";
+  const goals=n.goals||[];
+  return html`<div className="detail">
+    <div className="dhead">
+      <${Ring} pct=${pct} size=${68} stroke=${7} label=${true}/>
+      <div style=${{minWidth:0}}>
+        <h2>${n.name}</h2>
+        <div className="role">${n.role}</div>
+        <div className="chips"><span className="chip">Level ${level}</span><span className=${"chip"+(mgr?" strong":"")}>${relation}</span></div>
+      </div>
+    </div>
+    <div className="facts">
+      ${parent&&html`<div>Reports to <button type="button" className="linkbtn" onClick=${()=>onSelect(parent.id)}>${parent.name}</button>, ${parent.role}</div>`}
+      ${kids.length>0&&html`<div className="links"><span>Directly below:</span>${kids.map(k=>html`<button key=${k.id} type="button" className="linkbtn" onClick=${()=>onSelect(k.id)}>${k.name}</button>`)}</div>`}
+      ${!mgr&&html`<div>You can view this node. Only ${n.name}${parent?" and "+parent.name:""} can change it.</div>`}
+    </div>
+    ${(mgr||mine)&&html`<div className="actions">
+      ${mgr&&html`<button type="button" className="btn" onClick=${()=>onEdit(n.id)}><${Ico} d=${P.edit}/> Edit node</button>`}
+      ${mine&&html`<button type="button" className="btn" onClick=${onAdd}><${Ico} d=${P.plus}/> Add team member</button>`}
+      ${rem&&html`<button type="button" className="btn danger" onClick=${()=>onRemove(n.id)}><${Ico} d=${P.trash}/> Remove</button>`}
+    </div>`}
+    <div className="sec">
+      <div className="sec-h"><h3>Goals</h3><span className="mono">${pct}% done</span></div>
+      ${goals.length===0&&html`<p className="hint">${mgr?"No goals yet. Add some with Edit node.":"No goals yet."}</p>`}
+      <ul className="list">${goals.map(g=>html`<${GoalRow} key=${g.id} g=${g} editable=${mgr} onCommit=${v=>act.setGoal(n.id,g.id,v)}/>`)}</ul>
+    </div>
+    <${SubGoals} key=${n.id} view=${sg} owner=${n.name} onAdd=${t=>act.addSub(n.id,t)} onToggle=${s=>act.toggleSub(n.id,s)} onShare=${s=>act.shareSub(n.id,s)} onRemove=${s=>act.removeSub(n.id,s)}/>
+  </div>`;
+}
+
+/* ---------- forms ---------- */
+function Sheet({title,onClose,children}){
+  useEffect(()=>{const f=e=>{if(e.key==="Escape")onClose();};window.addEventListener("keydown",f);return()=>window.removeEventListener("keydown",f);},[onClose]);
+  return html`<div className="back" onMouseDown=${e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div className="sheet" role="dialog" aria-modal="true" aria-label=${title}>
+      <div className="sheet-h"><h2>${title}</h2><button type="button" className="icon" aria-label="Close" onClick=${onClose}><${Ico} d=${P.x}/></button></div>
+      ${children}
+    </div>
+  </div>`;
+}
+
+function GoalEditor({goals,onChange,prefix}){
+  const set=(id,text)=>onChange(goals.map(g=>g.id===id?Object.assign({},g,{text:text}):g));
+  return html`<div className="gedit">
+    ${goals.map((g,i)=>html`<div key=${g.id} className="gedit-row">
+      <input id=${prefix+"-goal-"+g.id} type="text" value=${g.text} onChange=${e=>set(g.id,e.target.value)} placeholder=${"Goal "+(i+1)} aria-label=${"Goal "+(i+1)} maxLength="120"/>
+      ${g.pct>0&&html`<span className="mono muted">${g.pct}%</span>`}
+      <button type="button" className="icon" aria-label=${"Remove goal "+(i+1)} onClick=${()=>onChange(goals.filter(x=>x.id!==g.id))}><${Ico} d=${P.x} size=${15}/></button>
+    </div>`)}
+    <div><button type="button" className="btn" onClick=${()=>onChange(goals.concat([{id:gid(),text:"",pct:0}]))}><${Ico} d=${P.plus} size=${15}/> Add goal</button></div>
+  </div>`;
+}
+
+function NodeForm({mode,node,parent,level,onSubmit,onCancel}){
+  const [name,setName]=useState(node?node.name:"");
+  const [role,setRole]=useState(node?node.role:"");
+  const [pin,setPin]=useState("");
+  const [goals,setGoals]=useState(node?(node.goals||[]).map(g=>Object.assign({},g)):[{id:gid(),text:"",pct:0}]);
+  const [err,setErr]=useState("");
+  const [busy,setBusy]=useState(false);
+  const submit=async e=>{
+    e.preventDefault();
+    const cleaned=goals.map(g=>Object.assign({},g,{text:g.text.trim()})).filter(g=>g.text);
+    if(!name.trim())return setErr("Enter a name.");
+    if(!role.trim())return setErr("Enter a role.");
+    if(mode==="add"&&!/^\d{4,8}$/.test(pin))return setErr("Set a PIN of 4 to 8 digits so this person can sign in.");
+    if(mode==="edit"&&pin&&!/^\d{4,8}$/.test(pin))return setErr("A new PIN must be 4 to 8 digits. Leave it empty to keep the current one.");
+    setErr("");setBusy(true);
+    await onSubmit({name:name.trim(),role:role.trim(),pin:pin,goals:cleaned});
+    setBusy(false);
+  };
+  return html`<form onSubmit=${submit} style=${{display:"grid",gap:"16px"}}>
+    <p className="muted">${mode==="add"?"New node at level "+level+", reporting to "+parent+".":"Level "+level+" is set by this node's position in the tree."}</p>
+    <div className="formgrid">
+      <label className="fl" htmlFor="f-name">Name<input id="f-name" type="text" value=${name} onChange=${e=>setName(e.target.value)} autoComplete="off" maxLength="60" autoFocus=${true}/></label>
+      <label className="fl" htmlFor="f-role">Role<input id="f-role" type="text" list="role-hints" value=${role} onChange=${e=>setRole(e.target.value)} autoComplete="off" maxLength="60" placeholder=${level===1?"Project Manager":level===2?"Team Lead":"Specialist"}/></label>
+    </div>
+    <datalist id="role-hints">${ROLE_HINTS.map(r=>html`<option key=${r} value=${r}></option>`)}</datalist>
+    <label className="fl" htmlFor="f-pin">${mode==="add"?"PIN for signing in":"New PIN"}
+      <input id="f-pin" type="password" inputMode="numeric" value=${pin} onChange=${e=>setPin(e.target.value.replace(/\D/g,""))} autoComplete="new-password" maxLength="8" placeholder=${mode==="add"?"4 to 8 digits":"Leave empty to keep the current PIN"}/>
+      <span className="help">${mode==="add"?"Tell this person the PIN and the project code.":"Only needed if you want to reset it."}</span>
+    </label>
+    <div style=${{display:"grid",gap:"8px"}}>
+      <div style=${{fontWeight:600,fontSize:"13.5px"}}>Goals</div>
+      <${GoalEditor} goals=${goals} onChange=${setGoals} prefix="f"/>
+    </div>
+    ${err&&html`<div className="err" role="alert">${err}</div>`}
+    <div className="row"><button type="submit" className="btn primary" disabled=${busy}>${mode==="add"?"Add to the tree":"Save changes"}</button><button type="button" className="btn" onClick=${onCancel}>Cancel</button></div>
+  </form>`;
+}
+
+
+/* ---------- sign in ---------- */
+function Welcome({onEnter}){
+  const [screen,setScreen]=useState("choose");
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState("");
+  const [code,setCode]=useState("");
+  const [proj,setProj]=useState(null);
+  const [isDemo,setIsDemo]=useState(false);
+  const [pickId,setPickId]=useState(null);
+  const [pin,setPin]=useState("");
+  const [pName,setPName]=useState("");
+  const [uName,setUName]=useState("");
+  const [uRole,setURole]=useState("Project Manager");
+  const [uPin,setUPin]=useState("");
+  const [uGoals,setUGoals]=useState([{id:gid(),text:"",pct:0}]);
+  const back=()=>{setScreen("choose");setErr("");setPin("");setPickId(null);setProj(null);};
+
+  const lookup=async(c,demo)=>{
+    setBusy(true);setErr("");
+    try{
+      const d=await api.lookup(c);
+      if(!d){setErr("No project has that code. Check it with your project manager.");}
+      else{setCode(c);setProj({meta:{name:d.name,rootId:d.root_id},nodes:toNodes(d.nodes)});setIsDemo(!!demo);setPickId(null);setPin("");setScreen("pick");}
+    }catch(e){setErr(friendly(e));}
+    setBusy(false);
+  };
+  const signIn=async e=>{
+    e.preventDefault();
+    const n=proj.nodes[pickId];
+    if(!n)return setErr("Choose your node first.");
+    setBusy(true);setErr("");
+    try{
+      const r=await api.login(code,n.id,pin);
+      if(r&&r.token){onEnter({code:code,token:r.token,nodeId:n.id});return;}
+      setErr(r&&r.error==="locked"?"Too many wrong PINs. This node is locked for 15 minutes.":r&&r.error==="wrong_pin"?"That PIN does not match this node.":"Could not sign in to that node.");
+    }catch(e2){setErr(friendly(e2));}
+    setBusy(false);
+  };
+  const create=async e=>{
+    e.preventDefault();
+    if(!pName.trim())return setErr("Enter a project name.");
+    if(!uName.trim())return setErr("Enter your name.");
+    if(!uRole.trim())return setErr("Enter your role.");
+    if(!/^\d{4,8}$/.test(uPin))return setErr("Set a PIN of 4 to 8 digits.");
+    setBusy(true);setErr("");
+    try{
+      const r=await api.createProject({name:pName.trim(),userName:uName.trim(),role:uRole.trim(),pin:uPin,goals:uGoals.map(g=>({id:g.id,text:g.text.trim(),pct:0})).filter(g=>g.text)});
+      onEnter({code:r.code,token:r.token,nodeId:r.node_id},{created:true});
+    }catch(e2){setErr(friendly(e2));setBusy(false);}
+  };
+
+  let right;
+  if(screen==="choose"){
+    right=html`<div className="panelcol">
+      <h2>Sign in</h2>
+      <button type="button" className="choice" onClick=${()=>{setErr("");setScreen("create");}}>
+        <span className="t">Create a new project <${Ico} d=${P.arrow} size=${20}/></span>
+        <span className="d">Start the tree as its first node. You become the project manager and set up the people directly below you.</span>
+      </button>
+      <button type="button" className="choice" onClick=${()=>{setErr("");setScreen("join");}}>
+        <span className="t">Join an existing project <${Ico} d=${P.arrow} size=${20}/></span>
+        <span className="d">Enter the project code, pick your node and sign in with your PIN.</span>
+      </button>
+      ${CFG.DEMO_CODE&&html`<div><button type="button" className="linkbtn" disabled=${busy} onClick=${()=>lookup(String(CFG.DEMO_CODE).toUpperCase(),true)}>Look around the demo project</button></div>`}
+      ${err&&html`<div className="err" role="alert">${err}</div>`}
+      <p className="hint muted" style=${{fontSize:"13px"}}>Projects are stored in your Supabase database, so everyone with the code sees the same tree.</p>
+    </div>`;
+  }else if(screen==="create"){
+    right=html`<form className="formcard" onSubmit=${create}>
+      <h3>New project</h3>
+      <label className="fl" htmlFor="c-proj">Project name<input id="c-proj" type="text" value=${pName} onChange=${e=>setPName(e.target.value)} maxLength="80" autoFocus=${true} autoComplete="off"/></label>
+      <div className="formgrid">
+        <label className="fl" htmlFor="c-name">Your name<input id="c-name" type="text" value=${uName} onChange=${e=>setUName(e.target.value)} maxLength="60" autoComplete="name"/></label>
+        <label className="fl" htmlFor="c-role">Your role<input id="c-role" type="text" list="role-hints" value=${uRole} onChange=${e=>setURole(e.target.value)} maxLength="60" autoComplete="off"/></label>
+      </div>
+      <datalist id="role-hints">${ROLE_HINTS.map(r=>html`<option key=${r} value=${r}></option>`)}</datalist>
+      <label className="fl" htmlFor="c-pin">PIN for signing in<input id="c-pin" type="password" inputMode="numeric" value=${uPin} onChange=${e=>setUPin(e.target.value.replace(/\D/g,""))} maxLength="8" placeholder="4 to 8 digits" autoComplete="new-password"/></label>
+      <div style=${{display:"grid",gap:"8px"}}>
+        <div style=${{fontWeight:600,fontSize:"13.5px"}}>Your goals <span className="muted" style=${{fontWeight:400}}>(you can change them later)</span></div>
+        <${GoalEditor} goals=${uGoals} onChange=${setUGoals} prefix="c"/>
+      </div>
+      ${err&&html`<div className="err" role="alert">${err}</div>`}
+      <div className="row"><button type="submit" className="btn primary" disabled=${busy}>Create project</button><button type="button" className="btn" onClick=${back}>Back</button></div>
+    </form>`;
+  }else if(screen==="join"){
+    right=html`<form className="formcard" onSubmit=${e=>{e.preventDefault();const c=code.trim().toUpperCase();if(!c)return setErr("Enter the project code.");lookup(c,false);}}>
+      <h3>Join a project</h3>
+      <label className="fl" htmlFor="j-code">Project code<input id="j-code" type="text" value=${code} onChange=${e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""))} maxLength="12" autoFocus=${true} autoComplete="off" placeholder="For example K7M4QX" style=${{fontFamily:"var(--font-mono)",letterSpacing:".1em"}}/>
+        <span className="help">Your project manager can copy it from the top of the project page.</span></label>
+      ${err&&html`<div className="err" role="alert">${err}</div>`}
+      <div className="row"><button type="submit" className="btn primary" disabled=${busy}>Find project</button><button type="button" className="btn" onClick=${back}>Back</button></div>
+    </form>`;
+  }else{
+    const order=[];
+    if(proj){const walk=(id,d)=>{order.push({n:proj.nodes[id],d:d});childrenOf(proj.nodes,id).forEach(k=>walk(k.id,d+1));};if(proj.nodes[proj.meta.rootId])walk(proj.meta.rootId,1);}
+    right=html`<form className="formcard" onSubmit=${signIn}>
+      <h3>${proj.meta.name}</h3>
+      <div style=${{display:"grid",gap:"8px"}}>
+        <div style=${{fontWeight:600,fontSize:"13.5px"}}>Choose your node</div>
+        <div className="pickwrap">${order.map(o=>html`<button key=${o.n.id} type="button" className="pick" aria-pressed=${pickId===o.n.id} style=${{paddingLeft:(12+(o.d-1)*14)+"px"}} onClick=${()=>{setPickId(o.n.id);setErr("");}}>
+          <span><span className="nm2">${o.n.name}</span><span className="rl2">${o.n.role}</span></span><span className="chip lv">Level ${o.d}</span></button>`)}</div>
+      </div>
+      <label className="fl" htmlFor="j-pin">Your PIN<input id="j-pin" type="password" inputMode="numeric" value=${pin} onChange=${e=>setPin(e.target.value.replace(/\D/g,""))} maxLength="8" autoComplete="current-password"/>
+        ${isDemo&&html`<span className="help">Every person in the demo has the PIN 1111.</span>`}</label>
+      ${err&&html`<div className="err" role="alert">${err}</div>`}
+      <div className="row"><button type="submit" className="btn primary" disabled=${!pickId||pin.length<4||busy}>Sign in</button><button type="button" className="btn" onClick=${back}>Back</button></div>
+    </form>`;
+  }
+
+  return html`<div className="welcome">
+    <div className="pitch">
+      <div className="brand"><${Mark}/>Branchline</div>
+      <h1>Every role in the project, and how far its goals have come.</h1>
+      <p>Build the tree level by level. Each node holds a role, a person and a goal checklist, and the ring around it fills as goals get done.</p>
+      <div className="art"><${MiniTree}/></div>
+    </div>
+    ${right}
+  </div>`;
+}
+
+function SetupNeeded(){
+  return html`<div className="shell"><div className="wrap"><div className="formcard" style=${{maxWidth:"620px",margin:"8vh auto 0"}}>
+    <div className="brand"><${Mark}/>Branchline</div>
+    <h2>Connect Supabase first</h2>
+    <p className="muted">This page has no Supabase project configured yet. Open <span className="mono">config.js</span> next to <span className="mono">index.html</span> and fill in two values from your Supabase project:</p>
+    <ul style=${{margin:0,paddingLeft:"20px",display:"grid",gap:"6px"}}>
+      <li><span className="mono">SUPABASE_URL</span>, the Project URL (Project Settings, then API).</li>
+      <li><span className="mono">SUPABASE_ANON_KEY</span>, the anon public key (or the publishable key).</li>
+    </ul>
+    <p className="muted">Then run <span className="mono">supabase/schema.sql</span> once in the Supabase SQL Editor and reload this page. The README has every step.</p>
+  </div></div></div>`;
+}
+
+/* ---------- workspace ---------- */
+function Workspace({session,first,onExit}){
+  const code=session.code,token=session.token,meId=session.nodeId;
+  const [project,setProject]=useState(undefined);
+  const [loadErr,setLoadErr]=useState("");
+  const [slow,setSlow]=useState(false);
+  const [selId,setSelId]=useState(meId);
+  const [sheet,setSheet]=useState(null);
+  const [notice,setNotice]=useState(first?{kind:"ok",text:"Project created. Share the code "+code+" so your team can sign in."}:null);
+  const pending=useRef(0),loadRef=useRef(null),failing=useRef(false),exitRef=useRef(onExit);
+  exitRef.current=onExit;
+
+  useEffect(()=>{
+    let dead=false;
+    const slowT=setTimeout(()=>{if(!dead)setSlow(true);},8000);
+    const load=async()=>{
+      if(pending.current>0)return;
+      try{
+        const p=await api.project(token);
+        if(dead||pending.current>0)return;
+        setSlow(false);setLoadErr("");failing.current=false;setProject(p);
+      }catch(e){
+        if(dead)return;
+        if(e.code==="invalid_session"){exitRef.current();return;}
+        setLoadErr(friendly(e));
+        if(!failing.current){failing.current=true;setNotice({kind:"error",text:friendly(e)});}
+      }
+    };
+    loadRef.current=load;
+    load();
+    const timer=setInterval(()=>{if(!document.hidden)load();},8000);
+    const vis=()=>{if(!document.hidden)load();};
+    document.addEventListener("visibilitychange",vis);
+    return()=>{dead=true;clearTimeout(slowT);clearInterval(timer);document.removeEventListener("visibilitychange",vis);};
+  },[token]);
+  useEffect(()=>{if(!notice)return;const t=setTimeout(()=>setNotice(null),notice.kind==="error"?9000:6500);return()=>clearTimeout(t);},[notice]);
+  const close=()=>setSheet(null);
+
+  /* optimistic local change, then the server call, then a fresh read */
+  const mutate=async(optimistic,remote)=>{
+    pending.current++;
+    const res={ok:true,value:undefined};
+    if(optimistic)setProject(p=>p?optimistic(p):p);
+    try{res.value=await remote();}
+    catch(e){
+      res.ok=false;
+      if(e.code==="invalid_session"){pending.current--;exitRef.current();return res;}
+      setNotice({kind:"error",text:friendly(e)});
+    }
+    pending.current--;
+    if(loadRef.current)await loadRef.current();
+    return res;
+  };
+
+  if(project===undefined)return html`<div className="shell"><div className="wrap"><div className="detail" style=${{maxWidth:"460px",margin:"10vh auto 0"}}>
+    <h2>${loadErr?"Could not load the project":"Loading project"}</h2>
+    <p className="muted">${loadErr?loadErr:slow?"Supabase is slow to answer. Keep this page open; the tree appears once it responds.":"Fetching the tree."}</p>
+    <div className="row">${loadErr&&html`<button type="button" className="btn primary" onClick=${()=>loadRef.current&&loadRef.current()}>Try again</button>`}<button type="button" className="btn" onClick=${onExit}>Back to sign in</button></div></div></div></div>`;
+
+  const nodes=project.nodes,rootId=project.meta.rootId,me=nodes[meId];
+  if(!me)return html`<div className="shell"><div className="wrap"><div className="detail" style=${{maxWidth:"460px",margin:"10vh auto 0"}}><h2>Project not available</h2><p className="muted">Your node is no longer part of this project.</p><button type="button" className="btn primary" onClick=${onExit}>Back to sign in</button></div></div></div>`;
+  const sel=nodes[selId]?selId:meId;
+
+  const saveSubs=fn=>{const next=fn(nodes[meId].subgoals||[]);return mutate(p=>patchNode(p,meId,n=>Object.assign({},n,{subgoals:next})),()=>api.saveSubgoals(token,next));};
+  const act={
+    setGoal:(id,goalId,v)=>mutate(p=>patchNode(p,id,n=>Object.assign({},n,{goals:n.goals.map(g=>g.id===goalId?Object.assign({},g,{pct:v}):g)})),()=>api.setGoal(token,id,goalId,v)),
+    addSub:(id,t)=>saveSubs(a=>a.concat([{id:gid(),text:t,done:false,shared:false}])),
+    toggleSub:(id,sid)=>saveSubs(a=>a.map(s=>s.id===sid?Object.assign({},s,{done:!s.done}):s)),
+    shareSub:(id,sid)=>saveSubs(a=>a.map(s=>s.id===sid?Object.assign({},s,{shared:!s.shared}):s)),
+    removeSub:(id,sid)=>saveSubs(a=>a.filter(s=>s.id!==sid))
+  };
+  const saveNew=async v=>{
+    const r=await mutate(null,()=>api.addNode(token,{name:v.name,role:v.role,pin:v.pin,goals:v.goals.map(g=>({id:gid(),text:g.text,pct:0}))}));
+    if(r.ok){setSelId(r.value);setSheet(null);setNotice({kind:"ok",text:v.name+" added. They sign in with code "+code+" and the PIN you set."});}
+  };
+  const saveEdit=async(id,v)=>{
+    const r=await mutate(null,()=>api.updateNode(token,id,{name:v.name,role:v.role,pin:v.pin,goals:v.goals.map(g=>({id:g.id||gid(),text:g.text,pct:g.pct||0}))}));
+    if(r.ok){setSheet(null);setNotice({kind:"ok",text:"Saved changes to "+v.name+"."});}
+  };
+  const doRemove=async id=>{
+    const ids=[id].concat(descendantsOf(nodes,id)),name=nodes[id].name;
+    const r=await mutate(null,()=>api.removeNode(token,id));
+    if(r.ok){if(ids.indexOf(selId)>=0)setSelId(meId);setSheet(null);setNotice({kind:"ok",text:ids.length>1?name+" and "+(ids.length-1)+" below them were removed.":name+" was removed."});}
+  };
+  const copyCode=()=>{
+    const ok=()=>setNotice({kind:"ok",text:"Project code "+code+" copied."});
+    const fail=()=>setNotice({kind:"ok",text:"Select the code and copy it: "+code});
+    try{navigator.clipboard.writeText(code).then(ok,fail);}catch(e){fail();}
+  };
+  const signOut=async()=>{try{await api.logout(token);}catch(e){}onExit();};
+
+  let sheetEl=null;
+  if(sheet){
+    if(sheet.type==="team"){
+      const managed=[me].concat(childrenOf(nodes,meId));
+      sheetEl=html`<${Sheet} title="Manage team" onClose=${close}>
+        <p className="muted">You can edit your own node and the people directly below you, and add people under your node.</p>
+        <div><button type="button" className="btn primary" onClick=${()=>setSheet({type:"add"})}><${Ico} d=${P.plus}/> Add team member</button></div>
+        <div>${managed.map(n=>html`<div key=${n.id} className="team-row">
+          <${Ring} pct=${progressOf(n)} size=${38} stroke=${5}/>
+          <div className="who2"><b>${n.name}</b><span>${n.role}${n.id===meId?" (you)":""}</span></div>
+          <button type="button" className="btn" onClick=${()=>setSheet({type:"edit",id:n.id})}><${Ico} d=${P.edit} size=${15}/> Edit</button>
+          ${n.id!==meId&&html`<button type="button" className="btn danger" onClick=${()=>setSheet({type:"remove",id:n.id})}><${Ico} d=${P.trash} size=${15}/> Remove</button>`}
+        </div>`)}</div>
+      <//>`;
+    }else if(sheet.type==="add"){
+      sheetEl=html`<${Sheet} title="Add team member" onClose=${close}><${NodeForm} mode="add" parent=${me.name} level=${levelOf(nodes,meId)+1} onSubmit=${saveNew} onCancel=${close}/><//>`;
+    }else if(sheet.type==="edit"&&nodes[sheet.id]&&canManage(nodes,meId,sheet.id)){
+      const n=nodes[sheet.id];
+      sheetEl=html`<${Sheet} title=${"Edit "+n.name} onClose=${close}><${NodeForm} key=${n.id} mode="edit" node=${n} level=${levelOf(nodes,n.id)} onSubmit=${v=>saveEdit(n.id,v)} onCancel=${close}/><//>`;
+    }else if(sheet.type==="remove"&&nodes[sheet.id]&&canRemove(nodes,meId,sheet.id)){
+      const n=nodes[sheet.id],below=descendantsOf(nodes,n.id).map(i=>nodes[i].name);
+      sheetEl=html`<${Sheet} title=${"Remove "+n.name+"?"} onClose=${close}>
+        <div className="warnbox"><div>${n.name}, ${n.role}, and their goals and sub-goals will be deleted.</div>
+          ${below.length>0&&html`<div>${below.length===1?"1 person below them is":below.length+" people below them are"} removed too: ${below.join(", ")}.</div>`}
+          <div className="muted">This cannot be undone.</div></div>
+        <div className="row"><button type="button" className="btn danger" onClick=${()=>doRemove(n.id)}>Remove from the tree</button><button type="button" className="btn" onClick=${close}>Keep</button></div>
+      <//>`;
+    }
+  }
+
+  return html`<div className="shell"><div className="wrap">
+    <header className="top">
+      <div className="brandrow"><${Mark}/><div style=${{minWidth:0}}><div className="proj-label mono">PROJECT</div><h1 className="proj-name">${project.meta.name}</h1></div></div>
+      <div className="top-actions">
+        <button type="button" className="codechip" onClick=${copyCode} title="Copy project code"><span className="mono lbl">CODE</span><span className="mono val">${code}</span><${Ico} d=${P.copy} size=${14}/></button>
+        <span className=${"chip sync"+(loadErr?" local":"")}>${loadErr?"Offline, retrying":"Saved in Supabase"}</span>
+        <button type="button" className="btn" onClick=${()=>setSheet({type:"team"})}><${Ico} d=${P.users}/> Manage team</button>
+        <button type="button" className="btn" onClick=${signOut}><${Ico} d=${P.out}/> Sign out</button>
+      </div>
+    </header>
+    <div className="who">Signed in as <strong>${me.name}</strong>, ${me.role}, level ${levelOf(nodes,meId)}. You can edit your own node and the people directly below you.</div>
+    <div className="stage">
+      <section className="canvas" aria-label="Project tree">
+        <div className="canvas-h"><h2>Project tree</h2>
+          <div className="legend"><span><i style=${{background:"var(--warn)"}}></i>under 40%</span><span><i style=${{background:"var(--accent)"}}></i>40 to 99%</span><span><i style=${{background:"var(--good)"}}></i>all goals done</span></div></div>
+        <${TreeView} nodes=${nodes} rootId=${rootId} selId=${sel} meId=${meId} onSelect=${setSelId}/>
+      </section>
+      <aside aria-label="Selected node">
+        <${Detail} nodes=${nodes} meId=${meId} selId=${sel} onSelect=${setSelId} onEdit=${id=>setSheet({type:"edit",id:id})} onRemove=${id=>setSheet({type:"remove",id:id})} onAdd=${()=>setSheet({type:"add"})} act=${act}/>
+      </aside>
+    </div>
+  </div>
+  ${sheetEl}
+  ${notice&&html`<div className="toast" role="status"><div className=${notice.kind}>${notice.text}</div></div>`}
+  </div>`;
+}
+
+/* ---------- app ---------- */
+function App(){
+  const [session,setSession]=useState(()=>{try{const v=JSON.parse(localStorage.getItem(SKEY)||"null");return v&&v.code&&v.token&&v.nodeId?v:null;}catch(e){return null;}});
+  const [first,setFirst]=useState(false);
+  const enter=(s,opts)=>{try{localStorage.setItem(SKEY,JSON.stringify(s));}catch(e){}setFirst(!!(opts&&opts.created));setSession(s);};
+  const exit=()=>{try{localStorage.removeItem(SKEY);}catch(e){}setFirst(false);setSession(null);};
+  if(!sb)return html`<${SetupNeeded}/>`;
+  if(session)return html`<${Workspace} key=${session.token} session=${session} first=${first} onExit=${exit}/>`;
+  return html`<div className="shell"><div className="wrap"><${Welcome} onEnter=${enter}/></div></div>`;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(html`<${App}/>`);
+})();
+</script>
+</body>
+</html>
