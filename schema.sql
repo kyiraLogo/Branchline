@@ -352,3 +352,43 @@ to anon, authenticated;
 
 -- make the new functions visible to the Supabase API right away
 notify pgrst, 'reload schema';
+
+create or replace function public._in_subtree(p_root text, p_id text) returns boolean
+language sql stable set search_path = public, extensions as $$
+  with recursive up as (
+    select id, parent_id from public.nodes where id = p_id
+    union all
+    select n.id, n.parent_id from public.nodes n join up u on n.id = u.parent_id
+  )
+  select exists (select 1 from up where id = p_root)
+$$;
+
+create or replace function public.move_node(p_token uuid, p_node_id text, p_new_parent_id text) returns void
+language plpgsql security definer set search_path = public, extensions as $$
+declare me public.nodes; t public.nodes; np public.nodes; v_order int;
+begin
+  me := public._me(p_token);
+  perform pg_advisory_xact_lock(hashtext(me.project_code));
+
+  select * into t from public.nodes where id = p_node_id and project_code = me.project_code;
+  if not found or t.id = me.id or not public._in_subtree(me.id, t.id) then
+    raise exception 'You can only move people who are below you in the tree.';
+  end if;
+
+  select * into np from public.nodes where id = p_new_parent_id and project_code = me.project_code;
+  if not found or not public._in_subtree(me.id, np.id) then
+    raise exception 'Choose a new manager from your own part of the tree.';
+  end if;
+  if public._in_subtree(t.id, np.id) then
+    raise exception 'A person cannot be moved under themselves or under someone who reports to them.';
+  end if;
+  if t.parent_id is not distinct from np.id then return; end if;
+
+  select coalesce(max(sort_order), 0) + 1 into v_order from public.nodes where parent_id = np.id;
+  update public.nodes set parent_id = np.id, sort_order = v_order where id = t.id;
+end $$;
+
+revoke execute on function public._in_subtree(text, text) from public, anon, authenticated;
+revoke execute on function public.move_node(uuid, text, text) from public;
+grant execute on function public.move_node(uuid, text, text) to anon, authenticated;
+notify pgrst, 'reload schema';
