@@ -392,3 +392,21 @@ revoke execute on function public._in_subtree(text, text) from public, anon, aut
 revoke execute on function public.move_node(uuid, text, text) from public;
 grant execute on function public.move_node(uuid, text, text) to anon, authenticated;
 notify pgrst, 'reload schema';
+
+
+create or replace function public._norm_goals(p jsonb) returns jsonb
+language plpgsql set search_path = public, extensions as $$
+begin
+  if p is null or jsonb_typeof(p) <> 'array' then return '[]'::jsonb; end if;
+  if jsonb_array_length(p) > 100 then raise exception 'Too many goals (the limit is 100).'; end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'id',       left(coalesce(nullif(e.v->>'id', ''), substr(md5(random()::text), 1, 8)), 40),
+             'text',     left(btrim(e.v->>'text'), 120),
+             'pct',      least(100, greatest(0, coalesce(nullif(e.v->>'pct', '')::numeric, 0)))::int,
+             'category', left(btrim(coalesce(e.v->>'category', '')), 40)
+           ) order by e.ord)
+    from jsonb_array_elements(p) with ordinality as e(v, ord)
+    where btrim(coalesce(e.v->>'text', '')) <> ''
+  ), '[]'::jsonb);
+end $$;
