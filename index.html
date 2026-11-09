@@ -223,6 +223,9 @@ function levelOf(nodes,id){let l=1,cur=nodes[id],guard=0;while(cur&&cur.parentId
 function descendantsOf(nodes,id){const out=[],seen=new Set([id]),st=[id];while(st.length){const c=st.pop();for(const k of childrenOf(nodes,c)){if(seen.has(k.id))continue;seen.add(k.id);out.push(k.id);st.push(k.id);}}return out;}
 const canManage=(nodes,v,t)=>{const n=nodes[t];return !!n&&!!nodes[v]&&(n.id===v||n.parentId===v);};
 const canRemove=(nodes,v,t)=>{const n=nodes[t];return !!n&&!!nodes[v]&&n.parentId===v;};
+function isInSubtree(nodes,rootId,id){let cur=nodes[id],guard=0;while(cur&&guard++<200){if(cur.id===rootId)return true;cur=cur.parentId?nodes[cur.parentId]:null;}return false;}
+const canMove=(nodes,v,t)=>!!nodes[t]&&!!nodes[v]&&t!==v&&isInSubtree(nodes,v,t);
+function moveTargets(nodes,v,t){const out=[];(function walk(id,d){if(id===t)return;out.push({node:nodes[id],depth:d});childrenOf(nodes,id).forEach(k=>walk(k.id,d+1));})(v,0);return out;}
 function subgoalView(nodes,v,t){const n=nodes[t],me=nodes[v];if(!n||!me)return{mode:"hidden",items:[]};const all=n.subgoals||[];if(n.id===me.id)return{mode:"own",items:all};if(me.parentId===n.id)return{mode:"shared",items:all.filter(s=>s.shared)};return{mode:"hidden",items:[]};}
 function layoutTree(nodes,rootId){const pos={};let leaf=0,maxDepth=0;const seen=new Set();
   function walk(id,d){seen.add(id);maxDepth=Math.max(maxDepth,d);const kids=childrenOf(nodes,id).filter(k=>!seen.has(k.id));
@@ -270,7 +273,8 @@ const api={
   addNode:(token,v)=>rpc("add_node",{p_token:token,p_name:v.name,p_role:v.role,p_pin:v.pin,p_goals:v.goals}),
   updateNode:(token,id,v)=>rpc("update_node",{p_token:token,p_node_id:id,p_name:v.name,p_role:v.role,p_goals:v.goals,p_pin:v.pin||null}),
   removeNode:(token,id)=>rpc("remove_node",{p_token:token,p_node_id:id}),
-  deleteProject:token=>rpc("delete_project",{p_token:token})
+  deleteProject:token=>rpc("delete_project",{p_token:token}),
+  moveNode:(token,id,parentId)=>rpc("move_node",{p_token:token,p_node_id:id,p_new_parent_id:parentId})
 };
 
 /* ---------- small pieces ---------- */
@@ -383,13 +387,14 @@ function SubGoals({view,owner,onAdd,onToggle,onShare,onRemove}){
   </div>`;
 }
 
-function Detail({nodes,meId,selId,onSelect,onEdit,onRemove,onAdd,act}){
+function Detail({nodes,meId,selId,onSelect,onEdit,onRemove,onAdd,onMove,act}){
   const n=nodes[selId];
   if(!n)return html`<div className="detail"><p className="muted">Select a node in the tree.</p></div>`;
   const me=nodes[meId],level=levelOf(nodes,n.id),parent=n.parentId?nodes[n.parentId]:null,kids=childrenOf(nodes,n.id);
   const mine=n.id===meId,mgr=canManage(nodes,meId,n.id),rem=canRemove(nodes,meId,n.id),pct=progressOf(n),sg=subgoalView(nodes,meId,n.id);
   const relation=mine?"Your node":n.parentId===meId?"Reports to you":me.parentId===n.id?"Your manager":"View only";
   const goals=n.goals||[];
+  const movable=canMove(nodes,meId,n.id);
   return html`<div className="detail">
     <div className="dhead">
       <${Ring} pct=${pct} size=${68} stroke=${7} label=${true}/>
@@ -404,7 +409,8 @@ function Detail({nodes,meId,selId,onSelect,onEdit,onRemove,onAdd,act}){
       ${kids.length>0&&html`<div className="links"><span>Directly below:</span>${kids.map(k=>html`<button key=${k.id} type="button" className="linkbtn" onClick=${()=>onSelect(k.id)}>${k.name}</button>`)}</div>`}
       ${!mgr&&html`<div>You can view this node. Only ${n.name}${parent?" and "+parent.name:""} can change it.</div>`}
     </div>
-    ${(mgr||mine)&&html`<div className="actions">
+    ${(mgr||mine||movable)&&html`<div className="actions">
+      ${movable&&html`<button type="button" className="btn" onClick=${()=>onMove(n.id)}><${Ico} d=${P.arrow}/> Move</button>`}
       ${mgr&&html`<button type="button" className="btn" onClick=${()=>onEdit(n.id)}><${Ico} d=${P.edit}/> Edit node</button>`}
       ${mine&&html`<button type="button" className="btn" onClick=${onAdd}><${Ico} d=${P.plus}/> Add team member</button>`}
       ${rem&&html`<button type="button" className="btn danger" onClick=${()=>onRemove(n.id)}><${Ico} d=${P.trash}/> Remove</button>`}
@@ -628,7 +634,19 @@ function DeleteProjectForm({code,name,count,onConfirm,onCancel}){
     <div className="row"><button type="submit" className="btn danger" disabled=${!ok||busy}>Delete project</button><button type="button" className="btn" onClick=${onCancel}>Keep project</button></div>
   </form>`;
 }
-
+/* ---------- move a node ---------- */
+function MoveForm({nodes,meId,node,onSubmit,onCancel}){
+  const options=moveTargets(nodes,meId,node.id);
+  const [pick,setPick]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const below=descendantsOf(nodes,node.id).length;
+  return html`<form onSubmit=${async e=>{e.preventDefault();if(!pick)return;setBusy(true);await onSubmit(pick);setBusy(false);}} style=${{display:"grid",gap:"16px"}}>
+    <p className="muted">Choose who ${node.name} reports to.${below>0?(below===1?" The 1 person below them moves along.":" The "+below+" people below them move along."):""} Levels update automatically.</p>
+    <div className="pickwrap">${options.map(o=>{const cur=o.node.id===node.parentId;return html`<button key=${o.node.id} type="button" className="pick" aria-pressed=${pick===o.node.id} disabled=${cur} style=${{paddingLeft:(12+o.depth*14)+"px",opacity:cur?0.6:1}} onClick=${()=>setPick(o.node.id)}>
+      <span><span className="nm2">${o.node.name}</span><span className="rl2">${o.node.role}${cur?" (current manager)":""}</span></span><span className="chip lv">Level ${levelOf(nodes,o.node.id)}</span></button>`;})}</div>
+    <div className="row"><button type="submit" className="btn primary" disabled=${!pick||busy}>Move here</button><button type="button" className="btn" onClick=${onCancel}>Cancel</button></div>
+  </form>`;
+}
 /* ---------- workspace ---------- */
 function Workspace({session,first,onExit}){
   const code=session.code,token=session.token,meId=session.nodeId;
@@ -719,6 +737,10 @@ function Workspace({session,first,onExit}){
     try{navigator.clipboard.writeText(code).then(ok,fail);}catch(e){fail();}
   };
   const signOut=async()=>{try{await api.logout(token);}catch(e){}onExit();};
+  const doMove=async(id,newParentId)=>{
+    const r=await mutate(null,()=>api.moveNode(token,id,newParentId));
+    if(r.ok){setSheet(null);setSelId(id);setNotice({kind:"ok",text:nodes[id].name+" now reports to "+nodes[newParentId].name+"."});}
+  };
   const doDeleteProject=async()=>{
     pending.current++;
     try{await api.deleteProject(token);}
@@ -748,6 +770,9 @@ function Workspace({session,first,onExit}){
       sheetEl=html`<${Sheet} title=${"Edit "+n.name} onClose=${close}><${NodeForm} key=${n.id} mode="edit" node=${n} level=${levelOf(nodes,n.id)} onSubmit=${v=>saveEdit(n.id,v)} onCancel=${close}/><//>`;
     }else if(sheet.type==="deleteProject"&&me.id===rootId){
       sheetEl=html`<${Sheet} title="Delete project?" onClose=${close}><${DeleteProjectForm} code=${code} name=${project.meta.name} count=${Object.keys(nodes).length} onConfirm=${doDeleteProject} onCancel=${close}/><//>`;
+    }else if(sheet.type==="move"&&nodes[sheet.id]&&canMove(nodes,meId,sheet.id)){
+      const n=nodes[sheet.id];
+      sheetEl=html`<${Sheet} title=${"Move "+n.name} onClose=${close}><${MoveForm} key=${n.id} nodes=${nodes} meId=${meId} node=${n} onSubmit=${pid=>doMove(n.id,pid)} onCancel=${close}/><//>`;
     }else if(sheet.type==="remove"&&nodes[sheet.id]&&canRemove(nodes,meId,sheet.id)){
       const n=nodes[sheet.id],below=descendantsOf(nodes,n.id).map(i=>nodes[i].name);
       sheetEl=html`<${Sheet} title=${"Remove "+n.name+"?"} onClose=${close}>
@@ -778,7 +803,7 @@ function Workspace({session,first,onExit}){
         <${TreeView} nodes=${nodes} rootId=${rootId} selId=${sel} meId=${meId} onSelect=${setSelId}/>
       </section>
       <aside aria-label="Selected node">
-        <${Detail} nodes=${nodes} meId=${meId} selId=${sel} onSelect=${setSelId} onEdit=${id=>setSheet({type:"edit",id:id})} onRemove=${id=>setSheet({type:"remove",id:id})} onAdd=${()=>setSheet({type:"add"})} act=${act}/>
+        <${Detail} nodes=${nodes} meId=${meId} selId=${sel} onSelect=${setSelId} onEdit=${id=>setSheet({type:"edit",id:id})} onRemove=${id=>setSheet({type:"remove",id:id})} onAdd=${()=>setSheet({type:"add"})} onMove=${id=>setSheet({type:"move",id:id})} act=${act}/>
       </aside>
     </div>
   </div>
