@@ -255,6 +255,7 @@ const ROLE_HINTS=["Project Manager","Team Lead","Specialist","Coordinator","Engi
 
 /* ---------- Supabase: every call goes through a database function (see supabase/schema.sql) ---------- */
 const CFG=window.BRANCHLINE_CONFIG||{};
+const INVITE=(()=>{try{const v=new URLSearchParams(location.search).get("join")||"";return /^[A-Za-z0-9]{4,12}$/.test(v)?v.toUpperCase():"";}catch(e){return "";}})();
 const sb=(window.supabase&&CFG.SUPABASE_URL&&CFG.SUPABASE_ANON_KEY)
   ?window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}):null;
 
@@ -534,7 +535,7 @@ function NodeForm({mode,node,parent,level,onSubmit,onCancel}){
 
 /* ---------- sign in ---------- */
 function Welcome({onEnter}){
-  const [screen,setScreen]=useState("choose");
+  const [screen,setScreen]=useState(INVITE?"join":"choose");
   const [busy,setBusy]=useState(false);
   const [err,setErr]=useState("");
   const [code,setCode]=useState("");
@@ -558,6 +559,7 @@ function Welcome({onEnter}){
     }catch(e){setErr(friendly(e));}
     setBusy(false);
   };
+    useEffect(()=>{if(INVITE)lookup(INVITE,false);},[]);   
   const signIn=async e=>{
     e.preventDefault();
     const n=proj.nodes[pickId];
@@ -782,6 +784,12 @@ function Workspace({session,first,onExit}){
     const fail=()=>setNotice({kind:"ok",text:"Select the code and copy it: "+code});
     try{navigator.clipboard.writeText(code).then(ok,fail);}catch(e){fail();}
   };
+    const copyInvite=()=>{
+    const link=location.href.split(/[?#]/)[0]+"?join="+code;
+    const ok=()=>setNotice({kind:"ok",text:"Invite link copied. Send each person their PIN separately."});
+    const fail=()=>setNotice({kind:"ok",text:"Select and copy this link: "+link});
+    try{navigator.clipboard.writeText(link).then(ok,fail);}catch(e){fail();}
+  };
   const signOut=async()=>{try{await api.logout(token);}catch(e){}onExit();};
   const doMove=async(id,newParentId)=>{
     const r=await mutate(null,()=>api.moveNode(token,id,newParentId));
@@ -835,6 +843,7 @@ function Workspace({session,first,onExit}){
       <div className="brandrow"><${Mark}/><div style=${{minWidth:0}}><div className="proj-label mono">PROJECT</div><h1 className="proj-name">${project.meta.name}</h1></div></div>
       <div className="top-actions">
         <button type="button" className="codechip" onClick=${copyCode} title="Copy project code"><span className="mono lbl">CODE</span><span className="mono val">${code}</span><${Ico} d=${P.copy} size=${14}/></button>
+        <button type="button" className="btn" onClick=${copyInvite}><${Ico} d=${P.copy}/> Copy invite link</button>
         <span className=${"chip sync"+(loadErr?" local":"")}>${loadErr?"Offline, retrying":"Saved in Supabase"}</span>
         <button type="button" className="btn" onClick=${()=>setSheet({type:"team"})}><${Ico} d=${P.users}/> Manage team</button>
         <button type="button" className="btn" onClick=${signOut}><${Ico} d=${P.out}/> Sign out</button>
@@ -860,7 +869,7 @@ function Workspace({session,first,onExit}){
 
 /* ---------- app ---------- */
 function App(){
-  const [session,setSession]=useState(()=>{try{const v=JSON.parse(localStorage.getItem(SKEY)||"null");return v&&v.code&&v.token&&v.nodeId?v:null;}catch(e){return null;}});
+  const [session,setSession]=useState(()=>{try{const v=JSON.parse(localStorage.getItem(SKEY)||"null");return v&&v.code&&v.token&&v.nodeId&&(!INVITE||v.code===INVITE)?v:null;}catch(e){return null;}});
   const [first,setFirst]=useState(false);
   const enter=(s,opts)=>{try{localStorage.setItem(SKEY,JSON.stringify(s));}catch(e){}setFirst(!!(opts&&opts.created));setSession(s);};
   const exit=()=>{try{localStorage.removeItem(SKEY);}catch(e){}setFirst(false);setSession(null);};
