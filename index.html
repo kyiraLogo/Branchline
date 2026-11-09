@@ -199,6 +199,16 @@ ul.list{list-style:none;margin:0;padding:0;display:grid}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 body{margin:0}
 [hidden]{display:none!important}
+.gedit-item{display:grid;gap:6px;padding-bottom:10px;border-bottom:1px dashed var(--line)}
+.cat{border-bottom:1px solid var(--line)}
+.cat-h{display:flex;align-items:center;gap:10px;width:100%;padding:12px 0;background:none;border:0;cursor:pointer;text-align:left;color:var(--ink)}
+.cat-h:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cat-h .chev{display:inline-grid;color:var(--muted);transition:transform .15s}
+.cat-h[aria-expanded="true"] .chev{transform:rotate(90deg)}
+.cat-name{flex:1;min-width:0;font:600 15px var(--font-display);overflow-wrap:anywhere}
+.cat-meta{display:flex;align-items:center;gap:8px;flex:none;font:500 12px var(--font-mono);color:var(--muted)}
+.cat .list .goal:last-child{border-bottom:0}
+.cat-tools{display:flex;justify-content:flex-end;gap:14px;padding-top:8px}
 </style>
 </head>
 <body>
@@ -418,12 +428,42 @@ function Detail({nodes,meId,selId,onSelect,onEdit,onRemove,onAdd,onMove,act}){
     <div className="sec">
       <div className="sec-h"><h3>Goals</h3><span className="mono">${pct}% done</span></div>
       ${goals.length===0&&html`<p className="hint">${mgr?"No goals yet. Add some with Edit node.":"No goals yet."}</p>`}
-      <ul className="list">${goals.map(g=>html`<${GoalRow} key=${g.id} g=${g} editable=${mgr} onCommit=${v=>act.setGoal(n.id,g.id,v)}/>`)}</ul>
+      <${GoalGroups} key=${n.id} goals=${goals} editable=${mgr} onCommit=${(goalId,v)=>act.setGoal(n.id,goalId,v)}/>
     </div>
     <${SubGoals} key=${n.id} view=${sg} owner=${n.name} onAdd=${t=>act.addSub(n.id,t)} onToggle=${s=>act.toggleSub(n.id,s)} onShare=${s=>act.shareSub(n.id,s)} onRemove=${s=>act.removeSub(n.id,s)}/>
   </div>`;
 }
-
+/* ---------- goal groups (drop-downs) ---------- */
+function GoalGroups({goals,editable,onCommit}){
+  const [closed,setClosed]=useState({});
+  const groups=[];
+  goals.forEach(g=>{
+    const name=String(g.category||"").trim(),key=name.toLowerCase();
+    let grp=groups.find(x=>x.key===key);
+    if(!grp){grp={key:key,name:name,items:[]};groups.push(grp);}
+    grp.items.push(g);
+  });
+  
+  const rows=items=>html`<ul className="list">${items.map(g=>html`<${GoalRow} key=${g.id} g=${g} editable=${editable} onCommit=${v=>onCommit(g.id,v)}/>`)}</ul>`;
+  if(!groups.some(x=>x.name))return rows(goals);   // no categories used: plain list
+  const named=groups.filter(x=>x.name),other=groups.find(x=>!x.name);
+  const ordered=other?named.concat([{key:"",name:"Other",items:other.items}]):named;
+  const allClosed=ordered.every(x=>closed[x.key]);
+  const setAll=v=>{const o={};ordered.forEach(x=>{o[x.key]=v;});setClosed(o);};
+  return html`<div>
+    <div className="cat-tools"><button type="button" className="linkbtn" onClick=${()=>setAll(!allClosed)}>${allClosed?"Expand all":"Collapse all"}</button></div>
+    ${ordered.map(x=>{
+      const open=!closed[x.key],avg=progressOf({goals:x.items}),done=x.items.filter(g=>g.pct>=100).length,pid="cat-"+x.key.replace(/[^a-z0-9]/g,"_");
+      return html`<section key=${x.key||"other"} className="cat">
+        <button type="button" className="cat-h" aria-expanded=${open} aria-controls=${pid} onClick=${()=>setClosed(c=>Object.assign({},c,{[x.key]:open}))}>
+          <span className="chev"><${Ico} d=${P.arrow} size=${14}/></span>
+          <span className="cat-name">${x.name}</span>
+          <span className="cat-meta">${done}/${x.items.length} done <${Ring} pct=${avg} size=${28} stroke=${4}/></span>
+        </button>
+        <div id=${pid} hidden=${!open}>${rows(x.items)}</div>
+      </section>`;})}
+  </div>`;
+}
 /* ---------- forms ---------- */
 function Sheet({title,onClose,children}){
   useEffect(()=>{const f=e=>{if(e.key==="Escape")onClose();};window.addEventListener("keydown",f);return()=>window.removeEventListener("keydown",f);},[onClose]);
@@ -436,14 +476,20 @@ function Sheet({title,onClose,children}){
 }
 
 function GoalEditor({goals,onChange,prefix}){
-  const set=(id,text)=>onChange(goals.map(g=>g.id===id?Object.assign({},g,{text:text}):g));
+  const set=(id,patch)=>onChange(goals.map(g=>g.id===id?Object.assign({},g,patch):g));
+  const cats=Array.from(new Set(goals.map(g=>String(g.category||"").trim()).filter(Boolean)));
+  const lastCat=goals.length?String(goals[goals.length-1].category||""):"";
   return html`<div className="gedit">
-    ${goals.map((g,i)=>html`<div key=${g.id} className="gedit-row">
-      <input id=${prefix+"-goal-"+g.id} type="text" value=${g.text} onChange=${e=>set(g.id,e.target.value)} placeholder=${"Goal "+(i+1)} aria-label=${"Goal "+(i+1)} maxLength="120"/>
-      ${g.pct>0&&html`<span className="mono muted">${g.pct}%</span>`}
-      <button type="button" className="icon" aria-label=${"Remove goal "+(i+1)} onClick=${()=>onChange(goals.filter(x=>x.id!==g.id))}><${Ico} d=${P.x} size=${15}/></button>
+    <datalist id=${prefix+"-cats"}>${cats.map(c=>html`<option key=${c} value=${c}></option>`)}</datalist>
+    ${goals.map((g,i)=>html`<div key=${g.id} className="gedit-item">
+      <div className="gedit-row">
+        <input id=${prefix+"-goal-"+g.id} type="text" value=${g.text} onChange=${e=>set(g.id,{text:e.target.value})} placeholder=${"Goal "+(i+1)} aria-label=${"Goal "+(i+1)} maxLength="120"/>
+        ${g.pct>0&&html`<span className="mono muted">${g.pct}%</span>`}
+        <button type="button" className="icon" aria-label=${"Remove goal "+(i+1)} onClick=${()=>onChange(goals.filter(x=>x.id!==g.id))}><${Ico} d=${P.x} size=${15}/></button>
+      </div>
+      <input id=${prefix+"-cat-"+g.id} type="text" list=${prefix+"-cats"} value=${g.category||""} onChange=${e=>set(g.id,{category:e.target.value})} placeholder="Category (optional)" aria-label=${"Category for goal "+(i+1)} maxLength="40" autoComplete="off" style=${{minHeight:"34px",fontSize:"13.5px"}}/>
     </div>`)}
-    <div><button type="button" className="btn" onClick=${()=>onChange(goals.concat([{id:gid(),text:"",pct:0}]))}><${Ico} d=${P.plus} size=${15}/> Add goal</button></div>
+    <div><button type="button" className="btn" onClick=${()=>onChange(goals.concat([{id:gid(),text:"",pct:0,category:lastCat}]))}><${Ico} d=${P.plus} size=${15}/> Add goal</button></div>
   </div>`;
 }
 
@@ -532,7 +578,7 @@ function Welcome({onEnter}){
     if(!/^\d{4,8}$/.test(uPin))return setErr("Set a PIN of 4 to 8 digits.");
     setBusy(true);setErr("");
     try{
-      const r=await api.createProject({name:pName.trim(),userName:uName.trim(),role:uRole.trim(),pin:uPin,goals:uGoals.map(g=>({id:g.id,text:g.text.trim(),pct:0})).filter(g=>g.text)});
+      const r=await api.createProject({name:pName.trim(),userName:uName.trim(),role:uRole.trim(),pin:uPin,goals:uGoals.map(g=>({id:g.id,text:g.text.trim(),pct:0,category:g.category||""})).filter(g=>g.text)});
       onEnter({code:r.code,token:r.token,nodeId:r.node_id},{created:true});
     }catch(e2){setErr(friendly(e2));setBusy(false);}
   };
@@ -719,11 +765,11 @@ function Workspace({session,first,onExit}){
     removeSub:(id,sid)=>saveSubs(a=>a.filter(s=>s.id!==sid))
   };
   const saveNew=async v=>{
-    const r=await mutate(null,()=>api.addNode(token,{name:v.name,role:v.role,pin:v.pin,goals:v.goals.map(g=>({id:gid(),text:g.text,pct:0}))}));
+    const r=await mutate(null,()=>api.addNode(token,{name:v.name,role:v.role,pin:v.pin,goals:v.goals.map(g=>({id:gid(),text:g.text,pct:0,category:g.category||""}))}));
     if(r.ok){setSelId(r.value);setSheet(null);setNotice({kind:"ok",text:v.name+" added. They sign in with code "+code+" and the PIN you set."});}
   };
   const saveEdit=async(id,v)=>{
-    const r=await mutate(null,()=>api.updateNode(token,id,{name:v.name,role:v.role,pin:v.pin,goals:v.goals.map(g=>({id:g.id||gid(),text:g.text,pct:g.pct||0}))}));
+    const r=await mutate(null,()=>api.updateNode(token,id,{name:v.name,role:v.role,pin:v.pin,goals:v.goals.map(g=>({id:g.id||gid(),text:g.text,pct:g.pct||0,category:g.category||""}))}));
     if(r.ok){setSheet(null);setNotice({kind:"ok",text:"Saved changes to "+v.name+"."});}
   };
   const doRemove=async id=>{
