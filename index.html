@@ -266,6 +266,7 @@ function friendly(e){
   if(/invalid api key|jwt|apikey/i.test(m))return "Supabase rejected the key in config.js. Copy the anon (public) key again.";
   return m||"Something went wrong. Try again.";
 }
+const LINK=(()=>{const m=/^#invite=([0-9a-f]{32,64})$/i.exec(location.hash||"");return m?m[1].toLowerCase():"";})();
 async function rpc(fn,args){
   const r=await sb.rpc(fn,args||{});
   if(r.error){const e=new Error(r.error.message||"Request failed");if(r.error.message==="invalid_session")e.code="invalid_session";throw e;}
@@ -285,7 +286,9 @@ const api={
   updateNode:(token,id,v)=>rpc("update_node",{p_token:token,p_node_id:id,p_name:v.name,p_role:v.role,p_goals:v.goals,p_pin:v.pin||null}),
   removeNode:(token,id)=>rpc("remove_node",{p_token:token,p_node_id:id}),
   deleteProject:token=>rpc("delete_project",{p_token:token}),
-  moveNode:(token,id,parentId)=>rpc("move_node",{p_token:token,p_node_id:id,p_new_parent_id:parentId})
+  moveNode:(token,id,parentId)=>rpc("move_node",{p_token:token,p_node_id:id,p_new_parent_id:parentId}),   
+  createLoginLink:(token,id)=>rpc("create_login_link",{p_token:token,p_node_id:id}),   
+  loginWithLink:link=>rpc("login_with_link",{p_link:link})
 };
 
 /* ---------- small pieces ---------- */
@@ -534,7 +537,7 @@ function NodeForm({mode,node,parent,level,onSubmit,onCancel}){
 
 
 /* ---------- sign in ---------- */
-function Welcome({onEnter}){
+function Welcome({onEnter,notice}){
   const [screen,setScreen]=useState(INVITE?"join":"choose");
   const [busy,setBusy]=useState(false);
   const [err,setErr]=useState("");
@@ -589,6 +592,7 @@ function Welcome({onEnter}){
   if(screen==="choose"){
     right=html`<div className="panelcol">
       <h2>Sign in</h2>
+      ${notice&&html`<div className="err" role="alert">${notice}</div>`}
       <button type="button" className="choice" onClick=${()=>{setErr("");setScreen("create");}}>
         <span className="t">Create a new project <${Ico} d=${P.arrow} size=${20}/></span>
         <span className="d">Start the tree as its first node. You become the project manager and set up the people directly below you.</span>
@@ -695,6 +699,22 @@ function MoveForm({nodes,meId,node,onSubmit,onCancel}){
     <div className="row"><button type="submit" className="btn primary" disabled=${!pick||busy}>Move here</button><button type="button" className="btn" onClick=${onCancel}>Cancel</button></div>
   </form>`;
 }
+  /* ---------- personal login link ---------- */
+function LoginLinkView({name,link,expires,onClose}){
+  const [copied,setCopied]=useState(false);
+  const ref=useRef(null);
+  const copy=()=>{
+    const fallback=()=>{if(ref.current)ref.current.select();};
+    try{navigator.clipboard.writeText(link).then(()=>setCopied(true),fallback);}catch(e){fallback();}
+  };
+  return html`<div style=${{display:"grid",gap:"16px"}}>
+    <p className="muted">Anyone who opens this link is signed in as <strong>${name}</strong> until ${expires}. Send it privately. Creating a new link for ${name} cancels this one, and so does changing their PIN.</p>
+    <label className="fl" htmlFor="login-link">Login link
+      <input id="login-link" ref=${ref} type="text" readOnly value=${link} onFocus=${e=>e.target.select()} style=${{fontFamily:"var(--font-mono)",fontSize:"12.5px"}}/>
+      <span className="help">You can only see this link now. It is not stored in a readable form.</span></label>
+    <div className="row"><button type="button" className="btn primary" onClick=${copy}>${copied?"Copied":"Copy link"}</button><button type="button" className="btn" onClick=${onClose}>Done</button></div>
+  </div>`;
+}
 /* ---------- workspace ---------- */
 function Workspace({session,first,onExit}){
   const code=session.code,token=session.token,meId=session.nodeId;
@@ -790,6 +810,13 @@ function Workspace({session,first,onExit}){
     const fail=()=>setNotice({kind:"ok",text:"Select and copy this link: "+link});
     try{navigator.clipboard.writeText(link).then(ok,fail);}catch(e){fail();}
   };
+    const makeLoginLink=async id=>{
+    const r=await mutate(null,()=>api.createLoginLink(token,id));
+    if(r.ok&&r.value){
+      const link=location.href.split(/[?#]/)[0]+"#invite="+r.value.link;
+      setSheet({type:"link",id:id,link:link,expires:new Date(r.value.expires_at).toLocaleDateString(undefined,{day:"numeric",month:"long",year:"numeric"})});
+    }
+  };
   const signOut=async()=>{try{await api.logout(token);}catch(e){}onExit();};
   const doMove=async(id,newParentId)=>{
     const r=await mutate(null,()=>api.moveNode(token,id,newParentId));
@@ -814,6 +841,7 @@ function Workspace({session,first,onExit}){
           <${Ring} pct=${progressOf(n)} size=${38} stroke=${5}/>
           <div className="who2"><b>${n.name}</b><span>${n.role}${n.id===meId?" (you)":""}</span></div>
           <button type="button" className="btn" onClick=${()=>setSheet({type:"edit",id:n.id})}><${Ico} d=${P.edit} size=${15}/> Edit</button>
+          ${n.parentId===meId&&html`<button type="button" className="btn" onClick=${()=>makeLoginLink(n.id)}><${Ico} d=${P.copy} size=${15}/> Login link</button>`}
           ${n.id!==meId&&html`<button type="button" className="btn danger" onClick=${()=>setSheet({type:"remove",id:n.id})}><${Ico} d=${P.trash} size=${15}/> Remove</button>`}
         </div>`)}</div>
       <//>`;
@@ -824,7 +852,7 @@ function Workspace({session,first,onExit}){
       sheetEl=html`<${Sheet} title=${"Edit "+n.name} onClose=${close}><${NodeForm} key=${n.id} mode="edit" node=${n} level=${levelOf(nodes,n.id)} onSubmit=${v=>saveEdit(n.id,v)} onCancel=${close}/><//>`;
     }else if(sheet.type==="deleteProject"&&me.id===rootId){
       sheetEl=html`<${Sheet} title="Delete project?" onClose=${close}><${DeleteProjectForm} code=${code} name=${project.meta.name} count=${Object.keys(nodes).length} onConfirm=${doDeleteProject} onCancel=${close}/><//>`;
-    }else if(sheet.type==="move"&&nodes[sheet.id]&&canMove(nodes,meId,sheet.id)){
+    }else if(sheet.type==="link"&&nodes[sheet.id]&&nodes[sheet.id].parentId===meId){       sheetEl=html`<${Sheet} title=${"Login link for "+nodes[sheet.id].name} onClose=${close}><${LoginLinkView} name=${nodes[sheet.id].name} link=${sheet.link} expires=${sheet.expires} onClose=${close}/><//>`;     }else if(sheet.type==="move"&&nodes[sheet.id]&&canMove(nodes,meId,sheet.id)){
       const n=nodes[sheet.id];
       sheetEl=html`<${Sheet} title=${"Move "+n.name} onClose=${close}><${MoveForm} key=${n.id} nodes=${nodes} meId=${meId} node=${n} onSubmit=${pid=>doMove(n.id,pid)} onCancel=${close}/><//>`;
     }else if(sheet.type==="remove"&&nodes[sheet.id]&&canRemove(nodes,meId,sheet.id)){
@@ -869,13 +897,31 @@ function Workspace({session,first,onExit}){
 
 /* ---------- app ---------- */
 function App(){
-  const [session,setSession]=useState(()=>{try{const v=JSON.parse(localStorage.getItem(SKEY)||"null");return v&&v.code&&v.token&&v.nodeId&&(!INVITE||v.code===INVITE)?v:null;}catch(e){return null;}});
+  const [session,setSession]=useState(()=>{if(LINK)return null;try{const v=JSON.parse(localStorage.getItem(SKEY)||"null");return v&&v.code&&v.token&&v.nodeId&&(!INVITE||v.code===INVITE)?v:null;}catch(e){return null;}});
   const [first,setFirst]=useState(false);
+  const [linkWorking,setLinkWorking]=useState(!!LINK);
+  const [linkMsg,setLinkMsg]=useState("");
   const enter=(s,opts)=>{try{localStorage.setItem(SKEY,JSON.stringify(s));}catch(e){}setFirst(!!(opts&&opts.created));setSession(s);};
   const exit=()=>{try{localStorage.removeItem(SKEY);}catch(e){}setFirst(false);setSession(null);};
+  useEffect(()=>{
+    const onHash=()=>{if(/^#invite=/i.test(location.hash))location.reload();};
+    window.addEventListener("hashchange",onHash);
+    if(LINK&&sb){
+      (async()=>{
+        let r=null,msg="";
+        try{r=await api.loginWithLink(LINK);}catch(e){msg=friendly(e);}
+        try{history.replaceState(null,"",location.pathname+location.search);}catch(e){}
+        if(r&&r.token){enter({code:r.code,token:r.token,nodeId:r.node_id});}
+        else setLinkMsg(msg||"This login link has expired or was replaced. Ask your manager for a new one, or sign in with your PIN.");
+        setLinkWorking(false);
+      })();
+    }
+    return()=>window.removeEventListener("hashchange",onHash);
+  },[]);
   if(!sb)return html`<${SetupNeeded}/>`;
   if(session)return html`<${Workspace} key=${session.token} session=${session} first=${first} onExit=${exit}/>`;
-  return html`<div className="shell"><div className="wrap"><${Welcome} onEnter=${enter}/></div></div>`;
+  if(linkWorking)return html`<div className="shell"><div className="wrap"><div className="detail" style=${{maxWidth:"460px",margin:"10vh auto 0"}}><h2>Signing you in</h2><p className="muted">Checking your login link.</p></div></div></div>`;
+  return html`<div className="shell"><div className="wrap"><${Welcome} onEnter=${enter} notice=${linkMsg}/></div></div>`;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(html`<${App}/>`);
