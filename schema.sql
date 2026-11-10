@@ -410,3 +410,66 @@ begin
     where btrim(coalesce(e.v->>'text', '')) <> ''
   ), '[]'::jsonb);
 end $$;
+
+
+create table if not exists public.node_links (
+  node_id     text primary key references public.nodes(id) on delete cascade,
+  token_hash  text not null unique,
+  expires_at  timestamptz not null,
+  created_at  timestamptz not null default now()
+);
+alter table public.node_links enable row level security;
+revoke all on table public.node_links from anon, authenticated;
+
+create or replace function public.create_login_link(p_token uuid, p_node_id text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare me public.nodes; t public.nodes; v_raw text; v_exp timestamptz := now() + interval '7 days';
+begin
+  me := public._me(p_token);
+  select * into t from public.nodes where id = p_node_id and project_code = me.project_code;
+  if not found or t.parent_id is distinct from me.id then
+    raise exception 'You can create login links only for people directly below you.';
+  end if;
+  v_raw := encode(gen_random_bytes(24), 'hex');
+  insert into public.node_links (node_id, token_hash, expires_at)
+  values (t.id, encode(digest(v_raw, 'sha256'), 'hex'), v_exp)
+  on conflict (node_id) do update
+    set token_hash = excluded.token_hash, expires_at = excluded.expires_at, created_at = now();
+  return jsonb_build_object('link', v_raw, 'expires_at', v_exp);
+end $$;
+
+create or replace function public.login_with_link(p_link text) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare l public.node_links; n public.nodes; v_token uuid;
+begin
+  if coalesce(p_link, '') !~* '^[0-9a-f]{32,64}$' then
+    return jsonb_build_object('error', 'invalid_link');
+  end if;
+  select * into l from public.node_links
+   where token_hash = encode(digest(lower(p_link), 'sha256'), 'hex') and expires_at > now();
+  if not found then return jsonb_build_object('error', 'invalid_link'); end if;
+
+  select * into n from public.nodes where id = l.node_id;
+  update public.nodes set failed_attempts = 0, locked_until = null where id = n.id;
+  delete from public.sessions where expires_at < now();
+  insert into public.sessions (node_id) values (n.id) returning token into v_token;
+  return jsonb_build_object('token', v_token, 'code', n.project_code, 'node_id', n.id);
+end $$;
+
+create or replace function public._drop_link_on_pin_change() returns trigger
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  delete from public.node_links where node_id = new.id;
+  return new;
+end $$;
+
+drop trigger if exists nodes_pin_change_drops_link on public.nodes;
+create trigger nodes_pin_change_drops_link
+  after update of pin_hash on public.nodes
+  for each row when (old.pin_hash is distinct from new.pin_hash)
+  execute function public._drop_link_on_pin_change();
+
+revoke execute on function public._drop_link_on_pin_change() from public, anon, authenticated;
+revoke execute on function public.create_login_link(uuid, text), public.login_with_link(text) from public;
+grant execute on function public.create_login_link(uuid, text), public.login_with_link(text) to anon, authenticated;
+notify pgrst, 'reload schema';
